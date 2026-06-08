@@ -1,0 +1,24 @@
+import mongoose from "mongoose";
+
+const PersonSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: [true, "User association is required"]
+  },
+  name: {
+    type: String,
+    required: [true, "Person name is required"],
+    trim: true
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+// Compound unique index to prevent duplicate named persons for the same user
+PersonSchema.index({ userId: 1, name: 1 }, { unique: true });
+
+const Person = mongoose.model("Person", PersonSchema);
+export default Person;
