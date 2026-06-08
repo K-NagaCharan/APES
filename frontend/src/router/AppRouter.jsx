@@ -4,9 +4,12 @@ import useAuth from '../hooks/useAuth';
 import { FullPageLoader } from '../components/ProtectedRoute';
 import ProtectedRoute from '../components/ProtectedRoute';
 import PublicRoute from '../components/PublicRoute';
+import AppLayout from '../components/AppLayout';
 import Login from '../pages/Login';
 import Register from '../pages/Register';
 import Dashboard from '../pages/Dashboard';
+import Gallery from '../pages/Gallery';
+import Upload from '../pages/Upload';
 
 const RootRedirect = () => {
   const { isAuthenticated, loading } = useAuth();
@@ -33,7 +36,11 @@ const AppRouter = () => {
 
         {/* Protected routes */}
         <Route element={<ProtectedRoute />}>
-          <Route path="/dashboard" element={<Dashboard />} />
+          <Route element={<AppLayout />}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/gallery" element={<Gallery />} />
+            <Route path="/upload" element={<Upload />} />
+          </Route>
         </Route>
 
         {/* Fallback redirect */}
@@ -42,5 +49,4 @@ const AppRouter = () => {
     </BrowserRouter>
   );
 };
-
 export default AppRouter;

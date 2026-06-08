@@ -11,38 +11,14 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#faf9f6] text-[#0f0e0c] flex flex-col font-sans selection:bg-[#c8501a] selection:text-white relative">
+    <div className="flex-grow flex flex-col justify-center relative select-none">
       {/* Decorative blurred background shapes */}
       <div className="absolute top-0 right-0 w-96 h-96 bg-[#fdf0ea] rounded-full filter blur-3xl opacity-50 pointer-events-none"></div>
       <div className="absolute bottom-0 left-0 w-96 h-96 bg-[#eeedfe] rounded-full filter blur-3xl opacity-50 pointer-events-none"></div>
 
-      {/* Top Navbar */}
-      <nav className="relative z-10 bg-white/70 backdrop-blur-md border-b border-[#e8e4dc] px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <span className="font-serif italic text-2xl tracking-tight text-[#0f0e0c]">
-            APES<span className="text-[#c8501a] not-italic">.</span>
-          </span>
-          <span className="hidden sm:inline-block px-2 py-0.5 bg-[#f2f0eb] border border-[#e8e4dc] rounded text-[10px] font-mono text-[#6b6760] uppercase tracking-wider">
-            Workspace
-          </span>
-        </div>
-
-        <div className="flex items-center space-x-4">
-          <div className="flex flex-col text-right">
-            <span className="text-xs font-semibold text-[#0f0e0c]">{user?.username}</span>
-            <span className="text-[10px] text-[#6b6760] font-mono">{user?.email}</span>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 border border-[#e8e4dc] hover:border-[#c8501a] hover:text-[#c8501a] text-xs font-mono uppercase tracking-widest rounded-lg transition active:scale-95 cursor-pointer bg-white"
-          >
-            Logout
-          </button>
-        </div>
-      </nav>
-
       {/* Main Workspace content */}
-      <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto p-6 md:p-12 space-y-8">
+      <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto p-6 md:p-12 space-y-8 flex flex-col justify-center">
+
         {/* Welcome Section */}
         <section className="space-y-2">
           <span className="font-mono text-xs uppercase tracking-widest text-[#c8501a] font-bold">
