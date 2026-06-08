@@ -1,10 +1,10 @@
-# Drishyamitra — System Architecture
+# APES — System Architecture
 
-This document describes the high-level design, component boundaries, and core workflows of the Drishyamitra AI-powered photo management system.
+This document describes the high-level design, component boundaries, and core workflows of the APES (Agentic Photos Evaluation and Segregation) AI-powered photo management system.
 
 ## 1. System Overview
 
-Drishyamitra is built as a polyglot microservice architecture designed to handle photo storage, automatic face recognition, natural language retrieval, and action dispatching.
+APES is built as a polyglot microservice architecture designed to handle photo storage, automatic face recognition, natural language retrieval, and action dispatching.
 
 ```mermaid
 graph TD

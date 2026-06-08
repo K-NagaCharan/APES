@@ -100,7 +100,7 @@ All public endpoints are prefixed with `/api`. Protected routes require a `Beare
   "message": "Photo uploaded successfully. Processing queued.",
   "photo": {
     "id": "60c72b2f9b1d8b2bad689a22",
-    "url": "https://res.cloudinary.com/demo/image/upload/v1234/drishyamitra/photo.jpg",
+    "url": "https://res.cloudinary.com/demo/image/upload/v1234/apes/photo.jpg",
     "status": "processing"
   },
   "jobId": "bullmq-job-12345"
@@ -120,7 +120,7 @@ All public endpoints are prefixed with `/api`. Protected routes require a `Beare
   "photos": [
     {
       "id": "60c72b2f9b1d8b2bad689a22",
-      "url": "https://res.cloudinary.com/demo/image/upload/v1234/drishyamitra/photo.jpg",
+      "url": "https://res.cloudinary.com/demo/image/upload/v1234/apes/photo.jpg",
       "status": "completed",
       "createdAt": "2026-06-08T10:00:00.000Z"
     }
@@ -277,7 +277,7 @@ All public endpoints are prefixed with `/api`. Protected routes require a `Beare
 * **Request Body:**
 ```json
 {
-  "imageUrl": "https://res.cloudinary.com/demo/image/upload/v1234/drishyamitra/photo.jpg"
+  "imageUrl": "https://res.cloudinary.com/demo/image/upload/v1234/apes/photo.jpg"
 }
 ```
 * **Success Response (200 OK):**
