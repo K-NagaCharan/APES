@@ -1,5 +1,6 @@
 import { runAgent } from "../agent/agentLoop.js";
 import { successResponse, errorResponse } from "../utils/apiResponse.js";
+import { formatAgentResponse } from "../utils/chatFormatter.js";
 import { logger } from "../config/logger.js";
 
 /**
@@ -35,10 +36,13 @@ export async function handleChat(req, res) {
       message
     });
 
-    // 4. Return only the reply field wrapped in standardized successResponse
+    // 4. Format response to presentation-ready data
+    const formattedResponse = formatAgentResponse(result);
+
+    // 5. Return reply and cards wrapped in standardized successResponse
     return successResponse(
       res,
-      { reply: result.reply },
+      formattedResponse,
       "Chat response generated successfully."
     );
   } catch (error) {

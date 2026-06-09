@@ -3,6 +3,7 @@ import { selectModel } from "../services/modelRouter.js";
 import { executeTool } from "./toolExecutor.js";
 import { TOOLS } from "./tools.js";
 import { saveChatHistory } from "../services/chatHistory.service.js";
+import { updateAgentMemory } from "./memoryManager.js";
 import groq from "../config/groq.js";
 import { logger } from "../config/logger.js";
 
@@ -47,14 +48,31 @@ export async function runAgent({ userId, message }) {
   // Work with a local reference to session messages
   const messages = session.messages;
 
+  // SYSTEM INSTRUCTIONS: Guide the LLM to follow tool invocation boundaries and prevent infinite loops.
+  const systemPrompt = {
+    role: "system",
+    content: `You are APES AI, a helpful photo assistant.
+You have access to tools to help the user search and share their photos.
+
+CRITICAL RULES:
+1. Only call tools when the user's request explicitly requires it.
+2. For simple queries (e.g. "Show Dad's photos", "Find my pictures"), call 'searchPhotos' to search the photos, and then output a friendly text summary of the search result. Do NOT call delivery tools ('sendWhatsApp', 'sendEmail') or compression tools ('requestZipConfirmation') unless the user explicitly asks to share, send, or compression is required.
+3. If the user asks to email or WhatsApp photos (e.g., "Email these to Mom"), call the corresponding delivery tool with the correct arguments.
+4. When calling 'searchPhotos', only use the arguments that are relevant to the user request. Do not guess or hallucinate date ranges or events unless specified.
+5. Today's date is ${new Date().toISOString().split('T')[0]}.`
+  };
+
   // 4. Run orchestration loop
   while (depth < MAX_TOOL_DEPTH) {
     depth++;
     logger.info({ depth, model }, "Executing agent loop iteration");
 
+    // Prep messages for Groq by prepending the system instructions dynamically
+    const groqMessages = [systemPrompt, ...messages];
+
     const response = await groq.chat.completions.create({
       model,
-      messages,
+      messages: groqMessages,
       tools: TOOLS,
       tool_choice: "auto",
       temperature: DEFAULT_TEMPERATURE
@@ -93,8 +111,16 @@ export async function runAgent({ userId, message }) {
         let result;
         try {
           result = await executeTool(name, args);
+          
+          // Update agent's short-term memory key in Redis
+          await updateAgentMemory({
+            userId,
+            toolName: name,
+            toolArgs: args,
+            toolResult: result
+          });
         } catch (err) {
-          logger.error({ err: err.message, toolName: name }, "Tool execution failed");
+          logger.error({ err: err.message, toolName: name }, "Tool execution or memory update failed");
           result = { error: err.message };
         }
 
@@ -138,13 +164,16 @@ export async function runAgent({ userId, message }) {
     });
   }
 
-  // 6. Cap message history to latest 30 messages
-  if (session.messages.length > MAX_MESSAGES) {
-    session.messages = session.messages.slice(-MAX_MESSAGES);
+  // 6. Reload session from Redis to get the memory updates, then append messages and save
+  const latestSession = await getSession(userId);
+  latestSession.messages = messages;
+
+  if (latestSession.messages.length > MAX_MESSAGES) {
+    latestSession.messages = latestSession.messages.slice(-MAX_MESSAGES);
   }
 
   // 7. Save updated session back to Redis (one single write)
-  await saveSession(userId, session);
+  await saveSession(userId, latestSession);
 
   // 8. Save completed chat interaction to database (non-blocking for user response experience)
   try {

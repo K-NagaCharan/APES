@@ -16,8 +16,10 @@ const generateId = () => {
 const WELCOME_MESSAGE = {
   id: 'welcome-message',
   role: 'assistant',
+  type: 'text',
   content: "Hi! I'm APES AI.\n\nI can help you search your photos, organize memories, and deliver albums.\n\nHow can I help today?",
-  timestamp: new Date().toISOString()
+  timestamp: new Date().toISOString(),
+  metadata: {}
 };
 
 /**
@@ -54,8 +56,10 @@ const Chat = () => {
     const userMessage = {
       id: generateId(),
       role: 'user',
+      type: 'text',
       content: text,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      metadata: {}
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -65,21 +69,42 @@ const Chat = () => {
       // 2. Fetch reply from chat service
       const response = await sendMessage(text);
       
-      const assistantMessage = {
-        id: generateId(),
-        role: 'assistant',
-        content: response.reply,
-        timestamp: new Date().toISOString()
-      };
+      const newMessages = [];
       
-      setMessages((prev) => [...prev, assistantMessage]);
+      if (response.reply) {
+        newMessages.push({
+          id: generateId(),
+          role: 'assistant',
+          type: 'text',
+          content: response.reply,
+          timestamp: new Date().toISOString(),
+          metadata: {}
+        });
+      }
+
+      if (response.cards !== undefined) {
+        newMessages.push({
+          id: generateId(),
+          role: 'assistant',
+          type: 'gallery',
+          content: response.cards,
+          timestamp: new Date().toISOString(),
+          metadata: {}
+        });
+      }
+      
+      if (newMessages.length > 0) {
+        setMessages((prev) => [...prev, ...newMessages]);
+      }
     } catch (error) {
       // 3. Fallback error bubble on failure
       const errorMessage = {
         id: generateId(),
         role: 'assistant',
+        type: 'text',
         content: "Sorry, I couldn't process your request. Please try again.",
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        metadata: {}
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
