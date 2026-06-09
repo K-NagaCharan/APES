@@ -1,7 +1,7 @@
 from flask import Flask
 from flask_cors import CORS
 from config import Config
-from routes import health_bp
+from routes import health_bp, recognize_bp
 
 def create_app():
     app = Flask(__name__)
@@ -11,6 +11,7 @@ def create_app():
     
     # Register blueprints (routes)
     app.register_blueprint(health_bp)
+    app.register_blueprint(recognize_bp)
     
     # Register custom error handlers
     @app.errorhandler(404)
