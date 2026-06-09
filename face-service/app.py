@@ -12,6 +12,15 @@ def create_app():
     # Register blueprints (routes)
     app.register_blueprint(health_bp)
     
+    # Register custom error handlers
+    @app.errorhandler(404)
+    def not_found(e):
+        return {"error": "Not Found"}, 404
+
+    @app.errorhandler(405)
+    def method_not_allowed(e):
+        return {"error": "Method Not Allowed"}, 405
+    
     return app
 
 app = create_app()
