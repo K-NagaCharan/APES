@@ -23,12 +23,13 @@ export const uploadStream = (fileBuffer) => {
 
   // Dynamic evaluation to capture runtime env modifications
   const allowMock = env.NODE_ENV === "test" || process.env.ALLOW_MOCK_CLOUDINARY === "true";
+  const forceMock = process.env.FORCE_MOCK_CLOUDINARY === "true";
 
-  if (!isCloudinaryConfigured) {
-    if (allowMock) {
+  if (!isCloudinaryConfigured || forceMock) {
+    if (allowMock || forceMock) {
       logger.info("Cloudinary is not configured. Falling back to mock upload.");
       return Promise.resolve({
-        secure_url: "https://res.cloudinary.com/demo/image/upload/v1234/apes/mock_photo.jpg",
+        secure_url: "https://res.cloudinary.com/dxgl7wq2e/image/upload/v1780994444/apes/photos/csferaoodlqmujzx6ti4.jpg",
         public_id: "apes/photos/mock_public_id_abc123",
         width: 1200,
         height: 800

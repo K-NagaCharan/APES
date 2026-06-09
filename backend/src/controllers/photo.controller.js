@@ -3,6 +3,8 @@ import Photo from "../models/Photo.js";
 import { successResponse, errorResponse } from "../utils/apiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { logger } from "../config/logger.js";
+import { recognizeFaces } from "../services/faceRecognition.service.js";
+import { processRecognizedFaces } from "../services/facePersistence.service.js";
 
 /**
  * Handle photo upload requests
@@ -30,6 +32,26 @@ export const uploadPhoto = asyncHandler(async (req, res) => {
   await photo.save();
 
   logger.info({ requestId: req.id, photoId: photo._id }, "Photo registered in MongoDB");
+
+  // Trigger face recognition & persistence synchronously
+  try {
+    logger.info({ requestId: req.id, photoId: photo._id }, "Triggering face recognition for uploaded photo");
+    const recognitionResult = await recognizeFaces(photo.url);
+    if (recognitionResult && recognitionResult.faces) {
+      const summary = await processRecognizedFaces(photo._id, recognitionResult.faces);
+      photo.faceCount = summary.processed;
+      await photo.save();
+      logger.info(
+        { requestId: req.id, photoId: photo._id, faceCount: photo.faceCount },
+        "Face recognition completed and faceCount updated"
+      );
+    }
+  } catch (error) {
+    logger.error(
+      { requestId: req.id, photoId: photo._id, err: error.message },
+      "Face recognition processing failed during upload"
+    );
+  }
 
   return res.status(201).json({
     success: true,

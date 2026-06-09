@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import { logger } from "./config/logger.js";
 import { requestId } from "./middlewares/requestId.js";
+import path from "path";
 import { errorHandler } from "./middlewares/errorHandler.js";
 
 // Routes imports
@@ -17,6 +18,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(requestId);
+// Serve uploaded photos statically
+app.use("/uploads", express.static(path.resolve("uploads")));
+
 
 // Log details of all incoming requests via pino
 app.use((req, res, next) => {
