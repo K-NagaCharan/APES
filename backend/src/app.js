@@ -8,6 +8,7 @@ import { errorHandler } from "./middlewares/errorHandler.js";
 import healthRoutes from "./routes/health.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import photoRoutes from "./routes/photo.routes.js";
+import chatRoutes from "./routes/chat.routes.js";
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use((req, res, next) => {
 app.use("/api/v1/health", healthRoutes);
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/photos", photoRoutes);
+app.use("/api/chat", chatRoutes);
 
 // Fallback 404 error handler
 app.use((req, res, next) => {
