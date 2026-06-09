@@ -38,5 +38,6 @@ export const env = {
   WHATSAPP_SESSION_PATH: process.env.WHATSAPP_SESSION_PATH || "./whatsapp-session",
   MAX_TOOL_DEPTH: parseInt(process.env.MAX_TOOL_DEPTH || "5", 10),
   MAX_HISTORY: parseInt(process.env.MAX_HISTORY || "20", 10),
-  FACE_SERVICE_URL: process.env.FACE_SERVICE_URL || "http://localhost:5001"
+  FACE_SERVICE_URL: process.env.FACE_SERVICE_URL || "http://localhost:5001",
+  FACE_MATCH_THRESHOLD: parseFloat(process.env.FACE_MATCH_THRESHOLD || "0.72")
 };
