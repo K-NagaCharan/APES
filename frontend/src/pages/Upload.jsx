@@ -6,85 +6,97 @@ import UploadDropzone from '../components/UploadDropzone';
 
 const Upload = () => {
   const navigate = useNavigate();
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState('');
-  const [dimensions, setDimensions] = useState({ width: null, height: null });
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [previewUrls, setPreviewUrls] = useState([]);
   const [uploadStatus, setUploadStatus] = useState('idle'); // idle | uploading | success | error
+  const [currentUploadIndex, setCurrentUploadIndex] = useState(0);
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  // Revoke object URL to prevent memory leaks when file preview changes or unmounts
+  // Revoke object URLs to prevent memory leaks when file preview changes or unmounts
   useEffect(() => {
     return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
+      previewUrls.forEach(urlObj => URL.revokeObjectURL(urlObj.url));
     };
-  }, [previewUrl]);
+  }, [previewUrls]);
 
-  const handleFileSelect = (file) => {
-    // Revoke previous URL if set
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-      setPreviewUrl('');
-    }
+  const handleFileSelect = (files) => {
+    // Revoke previous URLs
+    previewUrls.forEach(urlObj => URL.revokeObjectURL(urlObj.url));
 
-    setSelectedFile(file);
+    setSelectedFiles(files);
     setUploadStatus('idle');
     setUploadProgress(0);
+    setCurrentUploadIndex(0);
 
-    // Create preview
-    const objectUrl = URL.createObjectURL(file);
-    setPreviewUrl(objectUrl);
-
-    // Extract image dimensions
-    const img = new Image();
-    img.onload = () => {
-      setDimensions({ width: img.width, height: img.height });
-    };
-    img.src = objectUrl;
+    const urls = files.map(file => ({
+      url: URL.createObjectURL(file),
+      name: file.name,
+      size: file.size
+    }));
+    setPreviewUrls(urls);
   };
 
   const handleClear = () => {
-    setSelectedFile(null);
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-      setPreviewUrl('');
-    }
-    setDimensions({ width: null, height: null });
+    setSelectedFiles([]);
+    previewUrls.forEach(urlObj => URL.revokeObjectURL(urlObj.url));
+    setPreviewUrls([]);
     setUploadStatus('idle');
     setUploadProgress(0);
+    setCurrentUploadIndex(0);
   };
 
   const handleUpload = async () => {
-    if (!selectedFile) return;
+    if (selectedFiles.length === 0) return;
 
     setUploadStatus('uploading');
     setUploadProgress(0);
 
-    const formData = new FormData();
-    formData.append('file', selectedFile);
+    let successCount = 0;
 
-    try {
-      await api.post('/photos/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const percentage = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            setUploadProgress(percentage);
-          }
-        },
-      });
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i];
+      setCurrentUploadIndex(i);
+      setUploadProgress(0);
 
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        await api.post('/photos/upload', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+          onUploadProgress: (progressEvent) => {
+            if (progressEvent.total) {
+              const percentage = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+              setUploadProgress(percentage);
+            }
+          },
+        });
+        successCount++;
+      } catch (err) {
+        const errMsg = err.response?.data?.message || err.message || `Upload failed for ${file.name}`;
+        toast.error(errMsg);
+      }
+    }
+
+    if (successCount > 0) {
       setUploadStatus('success');
-      toast.success('Photo uploaded successfully!');
-    } catch (err) {
+      toast.success(`Successfully uploaded ${successCount} photo(s)!`);
+    } else {
       setUploadStatus('error');
-      const errMsg = err.response?.data?.message || err.message || 'Upload failed';
-      toast.error(errMsg);
     }
   };
+
+  const formatSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const totalSize = selectedFiles.reduce((acc, file) => acc + file.size, 0);
 
   return (
     <div className="flex-grow max-w-4xl w-full mx-auto p-6 md:p-12 space-y-8 select-none flex flex-col justify-center">
@@ -114,7 +126,7 @@ const Upload = () => {
             <div className="space-y-2">
               <h3 className="text-xl font-serif text-[#0f0e0c]">Upload Completed</h3>
               <p className="text-xs font-mono uppercase tracking-widest text-[#6b6760] font-bold">
-                File successfully ingested into repository
+                Files successfully ingested into repository
               </p>
             </div>
 
@@ -123,7 +135,7 @@ const Upload = () => {
                 onClick={handleClear}
                 className="px-5 py-2.5 border border-[#e8e4dc] hover:bg-[#f2f0eb] text-xs font-mono uppercase tracking-widest rounded-lg transition active:scale-95 cursor-pointer bg-white text-[#3a3834]"
               >
-                Upload another
+                Upload more
               </button>
               <button
                 onClick={() => navigate('/gallery')}
@@ -136,52 +148,73 @@ const Upload = () => {
         ) : (
           /* Dropzone or Preview Section */
           <div className="space-y-6">
-            {!selectedFile ? (
+            {!selectedFiles.length ? (
               <UploadDropzone onFileSelect={handleFileSelect} disabled={uploadStatus === 'uploading'} />
             ) : (
               /* Preview Panel */
               <div className="space-y-6 animate-in fade-in duration-200">
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-6 border border-[#e8e4dc] rounded-xl p-4 bg-[#faf9f6]">
-                  {/* Left Column: Image Preview */}
-                  <div className="md:col-span-4 aspect-square bg-[#f2f0eb] border border-[#e8e4dc] rounded-lg overflow-hidden flex items-center justify-center">
-                    <img
-                      src={previewUrl}
-                      alt="Selected preview"
-                      className="w-full h-full object-cover"
-                    />
+                  {/* Left Column: Image Previews Grid */}
+                  <div className="md:col-span-8 border border-[#e8e4dc] rounded-lg p-4 bg-[#f2f0eb]/20 max-h-[350px] overflow-y-auto">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                      {previewUrls.map((urlObj, idx) => (
+                        <div key={idx} className="relative aspect-square bg-[#f2f0eb] border border-[#e8e4dc] rounded-lg overflow-hidden group shadow-xs">
+                          <img src={urlObj.url} alt={urlObj.name} className="w-full h-full object-cover" />
+                          {uploadStatus === 'uploading' && idx === currentUploadIndex && (
+                            <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white font-mono text-[10px] font-bold">
+                              {uploadProgress}%
+                            </div>
+                          )}
+                          {uploadStatus === 'uploading' && idx < currentUploadIndex && (
+                            <div className="absolute inset-0 bg-[#0f6e56]/70 flex items-center justify-center text-white">
+                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                              </svg>
+                            </div>
+                          )}
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition duration-200 flex items-end p-2">
+                            <span className="text-[9px] text-white truncate font-mono w-full block">{urlObj.name}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
-                  {/* Right Column: Metadata details */}
-                  <div className="md:col-span-8 flex flex-col justify-between py-2 gap-4">
+                  {/* Right Column: Metadata Details & Operations */}
+                  <div className="md:col-span-4 flex flex-col justify-between py-2 gap-4">
                     <div className="space-y-4">
                       <h4 className="font-mono text-[10px] uppercase tracking-widest text-[#9c9890] font-bold">
                         File Configuration
                       </h4>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
                         <div>
-                          <span className="block text-[10px] text-[#6b6760] font-mono uppercase">Name</span>
-                          <span className="text-sm font-semibold text-[#0f0e0c] block truncate max-w-xs">{selectedFile.name}</span>
+                          <span className="block text-[10px] text-[#6b6760] font-mono uppercase">Total Selected</span>
+                          <span className="text-sm font-semibold text-[#0f0e0c] block">{selectedFiles.length} photo(s)</span>
                         </div>
                         <div>
-                          <span className="block text-[10px] text-[#6b6760] font-mono uppercase">Dimensions</span>
+                          <span className="block text-[10px] text-[#6b6760] font-mono uppercase">Total Size</span>
                           <span className="text-sm font-semibold text-[#0f0e0c] block font-mono">
-                            {dimensions.width && dimensions.height ? `${dimensions.width} × ${dimensions.height} px` : 'Extracting...'}
+                            {formatSize(totalSize)}
                           </span>
                         </div>
                       </div>
                     </div>
 
-                    {/* Progress Bar while uploading */}
+                    {/* Combined Progress Bar while uploading */}
                     {uploadStatus === 'uploading' && (
                       <div className="space-y-2 pt-4">
                         <div className="flex justify-between items-center text-xs font-mono">
-                          <span className="text-[#6b6760]">Uploading asset...</span>
-                          <span className="text-[#c8501a] font-bold">{uploadProgress}%</span>
+                          <span className="text-[#6b6760] truncate max-w-[150px]">
+                            {selectedFiles[currentUploadIndex]?.name}
+                          </span>
+                          <span className="text-[#c8501a] font-bold">
+                            {currentUploadIndex + 1}/{selectedFiles.length}
+                          </span>
                         </div>
                         <div className="w-full bg-[#e8e4dc] h-2 rounded-full overflow-hidden">
                           <div
                             className="bg-[#c8501a] h-full rounded-full transition-all duration-300"
-                            style={{ width: `${uploadProgress}%` }}
+                            style={{ width: `${((currentUploadIndex + (uploadProgress / 100)) / selectedFiles.length) * 100}%` }}
                           ></div>
                         </div>
                       </div>
@@ -194,14 +227,14 @@ const Upload = () => {
                           onClick={handleClear}
                           className="px-4 py-2 border border-[#e8e4dc] hover:bg-[#f2f0eb] text-xs font-mono uppercase tracking-widest rounded-lg transition active:scale-95 cursor-pointer bg-white text-[#3a3834]"
                         >
-                          Clear
+                          Clear All
                         </button>
                         <button
                           onClick={handleUpload}
                           disabled={uploadStatus === 'uploading'}
                           className="px-5 py-2 bg-[#0f0e0c] hover:bg-[#c8501a] text-white text-xs font-mono uppercase tracking-widest rounded-lg transition active:scale-95 cursor-pointer font-semibold flex items-center justify-center space-x-2"
                         >
-                          <span>Ingest Photo</span>
+                          <span>Ingest Photos</span>
                         </button>
                       </div>
                     )}

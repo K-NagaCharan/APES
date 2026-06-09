@@ -8,20 +8,29 @@ const UploadDropzone = ({ onFileSelect, disabled }) => {
   const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
   const maxSizeBytes = 10 * 1024 * 1024; // 10MB
 
-  const validateAndSelectFile = (file) => {
-    if (!file) return;
+  const validateAndSelectFiles = (filesList) => {
+    if (!filesList || filesList.length === 0) return;
 
-    if (!allowedTypes.includes(file.type)) {
-      toast.error('Invalid file type. Only JPEG, PNG, and WEBP formats are supported.');
-      return;
+    const validFiles = [];
+    const filesArray = Array.from(filesList);
+
+    for (const file of filesArray) {
+      if (!allowedTypes.includes(file.type)) {
+        toast.error(`Invalid type for "${file.name}". Only JPEG, PNG, and WEBP formats are supported.`);
+        continue;
+      }
+
+      if (file.size > maxSizeBytes) {
+        toast.error(`"${file.name}" exceeds the 10MB limit.`);
+        continue;
+      }
+
+      validFiles.push(file);
     }
 
-    if (file.size > maxSizeBytes) {
-      toast.error('File size exceeds the 10MB limit.');
-      return;
+    if (validFiles.length > 0) {
+      onFileSelect(validFiles);
     }
-
-    onFileSelect(file);
   };
 
   const handleDrag = (e) => {
@@ -42,8 +51,8 @@ const UploadDropzone = ({ onFileSelect, disabled }) => {
     setIsDragActive(false);
     if (disabled) return;
 
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      validateAndSelectFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      validateAndSelectFiles(e.dataTransfer.files);
     }
   };
 
@@ -51,8 +60,8 @@ const UploadDropzone = ({ onFileSelect, disabled }) => {
     e.preventDefault();
     if (disabled) return;
 
-    if (e.target.files && e.target.files[0]) {
-      validateAndSelectFile(e.target.files[0]);
+    if (e.target.files && e.target.files.length > 0) {
+      validateAndSelectFiles(e.target.files);
     }
   };
 
@@ -82,6 +91,7 @@ const UploadDropzone = ({ onFileSelect, disabled }) => {
         accept=".jpg,.jpeg,.png,.webp"
         onChange={handleChange}
         disabled={disabled}
+        multiple
         className="hidden"
       />
 
@@ -95,10 +105,10 @@ const UploadDropzone = ({ onFileSelect, disabled }) => {
 
         <div className="space-y-1">
           <p className="text-sm font-semibold text-[#0f0e0c]">
-            {isDragActive ? 'Drop your photo here' : 'Drag & drop photo here, or click to browse'}
+            {isDragActive ? 'Drop your photos here' : 'Drag & drop photos here, or click to browse'}
           </p>
           <p className="text-xs text-[#6b6760] font-mono">
-            JPEG, PNG, or WEBP up to 10MB
+            JPEG, PNG, or WEBP up to 10MB per file (Multiple files supported)
           </p>
         </div>
       </div>
