@@ -41,6 +41,9 @@ const AppLayout = () => {
             <NavLink to="/upload" className={navLinkClass}>
               Upload
             </NavLink>
+            <NavLink to="/chat" className={navLinkClass}>
+              Chat
+            </NavLink>
           </div>
         </div>
 
@@ -60,6 +63,9 @@ const AppLayout = () => {
             </NavLink>
             <NavLink to="/upload" className={navLinkClass}>
               Upload
+            </NavLink>
+            <NavLink to="/chat" className={navLinkClass}>
+              Chat
             </NavLink>
           </div>
 

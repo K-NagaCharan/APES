@@ -10,6 +10,7 @@ import Register from '../pages/Register';
 import Dashboard from '../pages/Dashboard';
 import Gallery from '../pages/Gallery';
 import Upload from '../pages/Upload';
+import Chat from '../pages/Chat';
 
 const RootRedirect = () => {
   const { isAuthenticated, loading } = useAuth();
@@ -40,6 +41,7 @@ const AppRouter = () => {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/gallery" element={<Gallery />} />
             <Route path="/upload" element={<Upload />} />
+            <Route path="/chat" element={<Chat />} />
           </Route>
         </Route>
 
