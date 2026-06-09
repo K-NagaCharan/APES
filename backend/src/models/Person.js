@@ -11,6 +11,12 @@ const PersonSchema = new mongoose.Schema({
     required: [true, "Person name is required"],
     trim: true
   },
+  nameNormalized: {
+    type: String,
+    required: [true, "Normalized name is required"],
+    lowercase: true,
+    trim: true
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -18,7 +24,7 @@ const PersonSchema = new mongoose.Schema({
 });
 
 // Compound unique index to prevent duplicate named persons for the same user
-PersonSchema.index({ userId: 1, name: 1 }, { unique: true });
+PersonSchema.index({ userId: 1, nameNormalized: 1 }, { unique: true });
 
 const Person = mongoose.model("Person", PersonSchema);
 export default Person;
