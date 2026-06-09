@@ -2,6 +2,7 @@ import { runAgent } from "../agent/agentLoop.js";
 import { successResponse, errorResponse } from "../utils/apiResponse.js";
 import { formatAgentResponse } from "../utils/chatFormatter.js";
 import { logger } from "../config/logger.js";
+import { clearChatHistory } from "../services/chatHistory.service.js";
 
 /**
  * Handle POST /api/chat protected endpoint
@@ -56,5 +57,22 @@ export async function handleChat(req, res) {
       500,
       "Failed to process chat request."
     );
+  }
+}
+
+/**
+ * Handle DELETE /api/chat protected endpoint to clear chat history
+ */
+export async function clearChat(req, res) {
+  const userId = req.user._id.toString();
+  try {
+    await clearChatHistory(userId);
+    return successResponse(res, null, "Chat history cleared successfully.");
+  } catch (error) {
+    logger.error(
+      { err: error, userId },
+      "Chat controller failed to clear history"
+    );
+    return errorResponse(res, 500, "Failed to clear chat history.");
   }
 }

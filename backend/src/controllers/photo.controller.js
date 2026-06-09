@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import * as photoService from "../services/photo.service.js";
 import Photo from "../models/Photo.js";
 import Face from "../models/Face.js";
+import Person from "../models/Person.js";
 import { successResponse, errorResponse } from "../utils/apiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { logger } from "../config/logger.js";
@@ -128,9 +129,9 @@ export const deletePhoto = asyncHandler(async (req, res) => {
   // Remove from Cloudinary
   await photoService.deleteAsset(photo.cloudinaryPublicId);
 
-  // Find associated manual faces before deleting to update centroids
-  const facesToDelete = await Face.find({ photoId: id }).select("personId labelSource").lean();
-  const manualPersonIds = [...new Set(facesToDelete.filter(f => f.labelSource === "manual" && f.personId).map(f => f.personId.toString()))];
+  // Find associated faces before deleting to update centroids and clean up orphaned Person documents
+  const facesToDelete = await Face.find({ photoId: id }).select("personId").lean();
+  const affectedPersonIds = [...new Set(facesToDelete.filter(f => f.personId).map(f => f.personId.toString()))];
 
   // Remove metadata record
   await Photo.deleteOne({ _id: id });
@@ -138,12 +139,18 @@ export const deletePhoto = asyncHandler(async (req, res) => {
   // Remove associated Face records
   await Face.deleteMany({ photoId: id });
 
-  // Recalculate centroids for affected people
-  for (const personId of manualPersonIds) {
+  // Recalculate centroids for affected people, or delete the person if no faces remain
+  for (const personId of affectedPersonIds) {
     try {
-      await updatePersonCentroid(personId);
+      const faceCount = await Face.countDocuments({ personId });
+      if (faceCount === 0) {
+        await Person.deleteOne({ _id: personId });
+        logger.info({ personId }, "Person deleted because all their associated photos/faces were deleted");
+      } else {
+        await updatePersonCentroid(personId);
+      }
     } catch (err) {
-      logger.error({ personId, err: err.message }, "Failed to update centroid on photo delete");
+      logger.error({ personId, err: err.message }, "Failed to update centroid or delete person on photo delete");
     }
   }
 
@@ -181,9 +188,9 @@ export const bulkDeletePhotos = asyncHandler(async (req, res) => {
   const ownedIds = ownedPhotos.map(p => p._id);
   const publicIds = ownedPhotos.map(p => p.cloudinaryPublicId);
 
-  // Find associated manual faces before deleting to update centroids
-  const facesToDelete = await Face.find({ photoId: { $in: ownedIds } }).select("personId labelSource").lean();
-  const manualPersonIds = [...new Set(facesToDelete.filter(f => f.labelSource === "manual" && f.personId).map(f => f.personId.toString()))];
+  // Find associated faces before deleting to update centroids and clean up orphaned Person documents
+  const facesToDelete = await Face.find({ photoId: { $in: ownedIds } }).select("personId").lean();
+  const affectedPersonIds = [...new Set(facesToDelete.filter(f => f.personId).map(f => f.personId.toString()))];
 
   logger.info(
     { requestId: req.id, userId: req.user._id, count: ownedIds.length },
@@ -205,12 +212,18 @@ export const bulkDeletePhotos = asyncHandler(async (req, res) => {
   // Delete associated Face records to maintain integrity
   await Face.deleteMany({ photoId: { $in: ownedIds } });
 
-  // Recalculate centroids for affected people
-  for (const personId of manualPersonIds) {
+  // Recalculate centroids for affected people, or delete the person if no faces remain
+  for (const personId of affectedPersonIds) {
     try {
-      await updatePersonCentroid(personId);
+      const faceCount = await Face.countDocuments({ personId });
+      if (faceCount === 0) {
+        await Person.deleteOne({ _id: personId });
+        logger.info({ personId }, "Person deleted during bulk delete because all their associated photos/faces were deleted");
+      } else {
+        await updatePersonCentroid(personId);
+      }
     } catch (err) {
-      logger.error({ personId, err: err.message }, "Failed to update centroid during bulk delete");
+      logger.error({ personId, err: err.message }, "Failed to update centroid or delete person during bulk delete");
     }
   }
 

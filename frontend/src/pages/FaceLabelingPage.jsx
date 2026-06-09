@@ -40,8 +40,12 @@ const FaceLabelingPage = () => {
     try {
       const result = await faceApi.labelFace(faceId, personName);
       if (result && result.success) {
-        // Optimistic UI update: Filter out the card immediately
-        setFaces((prev) => prev.filter((f) => f.faceId !== faceId));
+        // Optimistic UI update: Filter out all labeled cards immediately
+        const labeledIdsSet = new Set(result.labeledIds || [faceId]);
+        setFaces((prev) => prev.filter((f) => !labeledIdsSet.has(f.faceId)));
+
+        // Background refetch to synchronize pagination and potential new suggestions/state
+        fetchUnlabeledFaces(page);
 
         // Toast notifications
         if (isSuggested) {

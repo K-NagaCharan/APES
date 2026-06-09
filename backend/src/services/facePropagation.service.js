@@ -153,7 +153,8 @@ export async function propagateFaceLabel(faceId, personId, userId) {
 
   return {
     checked,
-    propagated
+    propagated,
+    propagatedIds: matchingIds
   };
 }
 

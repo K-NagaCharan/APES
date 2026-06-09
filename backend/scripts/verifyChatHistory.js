@@ -3,7 +3,7 @@ import { connectDB } from "../src/config/db.js";
 import { logger } from "../src/config/logger.js";
 import User from "../src/models/User.js";
 import ChatHistory from "../src/models/ChatHistory.js";
-import { saveChatHistory } from "../src/services/chatHistory.service.js";
+import { saveChatHistory, clearChatHistory } from "../src/services/chatHistory.service.js";
 
 const TEST_USER_EMAIL = "verify_chat_history_user@apes.com";
 
@@ -103,6 +103,15 @@ const runVerification = async () => {
     assert(docs[2].userMessage === "Message 1", "Third document (oldest) is Message 1");
     
     logger.info("PASSED: Chronological sorting (createdAt desc) assertion successful!");
+
+    // -------------------------------------------------------------
+    // TEST 3: Clear Chat History
+    // -------------------------------------------------------------
+    logger.info("--- Test 3: Clear Chat History ---");
+    await clearChatHistory(userId);
+    const postClearDocs = await ChatHistory.find({ userId: testUser._id });
+    assert(postClearDocs.length === 0, "Chat history should be empty after clearing");
+    logger.info("PASSED: clearChatHistory deletion assertion successful!");
 
     console.log("\nChat history verified successfully.");
 

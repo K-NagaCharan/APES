@@ -215,6 +215,10 @@ async function main() {
     if (dbFaces.length !== 0) {
       throw new Error("TEST 4 FAILED: Associated Face coordinates were not deleted from DB");
     }
+    const dbPersonA = await Person.findById(personA._id);
+    if (dbPersonA !== null) {
+      throw new Error("TEST 4 FAILED: Person Alice was not deleted when all her photos were deleted");
+    }
     console.log("[TEST 4] PASSED.");
 
     // ==========================================

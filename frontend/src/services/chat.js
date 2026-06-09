@@ -10,3 +10,13 @@ export const sendMessage = async (message) => {
   const response = await api.post("/chat", { message });
   return response.data.data;
 };
+
+/**
+ * Request to clear the user's chat history from database.
+ *
+ * @returns {Promise<object>}
+ */
+export const clearHistory = async () => {
+  const response = await api.delete("/chat");
+  return response.data;
+};

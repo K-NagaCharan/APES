@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import toast from 'react-hot-toast';
 import ChatWindow from '../components/chat/ChatWindow';
 import ChatInput from '../components/chat/ChatInput';
-import { sendMessage } from '../services/chat';
+import { sendMessage, clearHistory } from '../services/chat';
 
 /**
  * Generate a unique ID defensively
@@ -112,9 +113,15 @@ const Chat = () => {
     }
   };
 
-  const handleClearHistory = () => {
+  const handleClearHistory = async () => {
     if (window.confirm('Are you sure you want to clear your chat history?')) {
-      setMessages([WELCOME_MESSAGE]);
+      try {
+        await clearHistory();
+        setMessages([WELCOME_MESSAGE]);
+        toast.success('Chat history cleared.');
+      } catch (err) {
+        toast.error('Failed to clear chat history.');
+      }
     }
   };
 

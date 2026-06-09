@@ -33,3 +33,18 @@ export async function saveChatHistory({ userId, userMessage, assistantReply }) {
 
   await history.save();
 }
+
+/**
+ * Clear all chat history for a user from MongoDB.
+ *
+ * @param {string} userId - The ID of the user.
+ * @returns {Promise<void>}
+ */
+export async function clearChatHistory(userId) {
+  if (!userId) {
+    throw new Error("userId is required to clear chat history");
+  }
+
+  logger.info({ userId }, "Clearing chat history from database");
+  await ChatHistory.deleteMany({ userId });
+}

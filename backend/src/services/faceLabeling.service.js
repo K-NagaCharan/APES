@@ -112,7 +112,7 @@ export async function labelFace(faceId, userId, personName) {
 
   return {
     success: true,
-    faceId,
+    labeledIds: [face._id.toString(), ...(propagation.propagatedIds || []).map(id => id.toString())],
     personId: person._id,
     personName: person.name,
     createdPerson,
