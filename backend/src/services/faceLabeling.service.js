@@ -1,6 +1,7 @@
 import Person from "../models/Person.js";
 import Face from "../models/Face.js";
 import { logger } from "../config/logger.js";
+import { propagateFaceLabel } from "./facePropagation.service.js";
 
 /**
  * labelFace
@@ -86,6 +87,9 @@ export async function labelFace(faceId, userId, personName) {
   // once the upload pipeline becomes transactional.
   await face.save();
 
+  // Run automatic label propagation for other matching unlabeled faces
+  const propagation = await propagateFaceLabel(face._id, person._id, userId);
+
   const durationMs = Date.now() - startTime;
 
   // 8. Logging metadata (excluding embedding vectors)
@@ -94,6 +98,7 @@ export async function labelFace(faceId, userId, personName) {
       faceId,
       personId: person._id,
       createdPerson,
+      propagatedCount: propagation.propagated,
       durationMs
     },
     "Face successfully labeled and person associated"
@@ -104,6 +109,7 @@ export async function labelFace(faceId, userId, personName) {
     faceId,
     personId: person._id,
     personName: person.name,
-    createdPerson
+    createdPerson,
+    propagated: propagation.propagated
   };
 }
