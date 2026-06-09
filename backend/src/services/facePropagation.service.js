@@ -2,6 +2,7 @@ import Face from "../models/Face.js";
 import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
 import { cosineSimilarity } from "../utils/cosineSimilarity.js";
+import { AuthorizationError, NotFoundError } from "../utils/errors.js";
 
 // Initialize THRESHOLD once at module load time to keep logic clean and performant
 const THRESHOLD = env.FACE_MATCH_THRESHOLD;
@@ -24,12 +25,12 @@ export async function propagateFaceLabel(faceId, personId, userId) {
   // 1. Retrieve the newly labeled Face document by its faceId
   const face = await Face.findById(faceId);
   if (!face) {
-    throw new Error("Face not found");
+    throw new NotFoundError("Face not found");
   }
 
   // 2. Verify user tenancy ownership
   if (face.userId.toString() !== userId.toString()) {
-    throw new Error("Access denied. You do not own this face.");
+    throw new AuthorizationError("Access denied. You do not own this face.");
   }
 
   const labeledEmbedding = face.embedding;

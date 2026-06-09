@@ -2,6 +2,7 @@ import Person from "../models/Person.js";
 import Face from "../models/Face.js";
 import { logger } from "../config/logger.js";
 import { propagateFaceLabel } from "./facePropagation.service.js";
+import { ValidationError, AuthorizationError, NotFoundError } from "../utils/errors.js";
 
 /**
  * labelFace
@@ -19,32 +20,32 @@ export async function labelFace(faceId, userId, personName) {
 
   // 1. Validate name input type and dimensions
   if (typeof personName !== "string") {
-    throw new TypeError("Person name must be a string");
+    throw new ValidationError("Person name must be a string");
   }
 
   const trimmedName = personName.trim();
   if (trimmedName.length === 0) {
-    throw new Error("Person name cannot be empty or whitespace only");
+    throw new ValidationError("Person name cannot be empty or whitespace only");
   }
 
   if (trimmedName.length > 100) {
-    throw new Error("Person name cannot exceed 100 characters");
+    throw new ValidationError("Person name cannot exceed 100 characters");
   }
 
   // 2. Retrieve the Face document
   const face = await Face.findById(faceId);
   if (!face) {
-    throw new Error("Face not found");
+    throw new NotFoundError("Face not found");
   }
 
   // 3. Verify user tenancy ownership
   if (face.userId.toString() !== userId.toString()) {
-    throw new Error("Access denied. You do not own this face.");
+    throw new AuthorizationError("Access denied. You do not own this face.");
   }
 
   // 4. Verify the face is not already labeled
   if (face.isLabeled) {
-    throw new Error("Face already labeled");
+    throw new ValidationError("Face already labeled");
   }
 
   const normalized = trimmedName.toLowerCase();

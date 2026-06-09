@@ -9,6 +9,7 @@ import healthRoutes from "./routes/health.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import photoRoutes from "./routes/photo.routes.js";
 import chatRoutes from "./routes/chat.routes.js";
+import faceRoutes from "./routes/face.routes.js";
 
 const app = express();
 
@@ -33,6 +34,7 @@ app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/photos", photoRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/v1/chat", chatRoutes);
+app.use("/api/faces", faceRoutes);
 
 // Fallback 404 error handler
 app.use((req, res, next) => {
