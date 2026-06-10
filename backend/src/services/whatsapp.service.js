@@ -35,6 +35,9 @@ export function initializeWhatsApp() {
     authStrategy: new LocalAuth({
       dataPath: env.WHATSAPP_SESSION_PATH
     }),
+    webVersionCache: {
+      type: "none"
+    },
     puppeteer: {
       headless: true,
       args: [
@@ -81,6 +84,22 @@ export function initializeWhatsApp() {
   return client;
 }
 
+export async function getWhatsAppStatus() {
+  let clientState = null;
+  if (client) {
+    try {
+      clientState = await client.getState();
+    } catch (err) {
+      clientState = `Error: ${err.message}`;
+    }
+  }
+  return {
+    initialized: !!client,
+    isReadyLocal: isReady,
+    clientState
+  };
+}
+
 /**
  * Helper to check if the WhatsApp client is ready and connected.
  * 
@@ -90,7 +109,7 @@ export async function isWhatsAppReady() {
   if (!client) return false;
   try {
     const state = await client.getState();
-    return state === "CONNECTED" && isReady;
+    return state === "CONNECTED" || isReady;
   } catch (err) {
     // If getState fails (e.g. browser not open), return the local ready flag
     return isReady;
@@ -149,6 +168,12 @@ export async function sendWhatsApp({ recipient, photos, text }) {
   try {
     // Standardize recipient format for whatsapp-web.js
     let cleanRecipient = recipient.replace(/\D/g, "");
+    if (cleanRecipient.startsWith("0")) {
+      cleanRecipient = cleanRecipient.slice(1);
+    }
+    if (cleanRecipient.length === 10) {
+      cleanRecipient = `91${cleanRecipient}`;
+    }
     if (!cleanRecipient.endsWith("@c.us")) {
       cleanRecipient = `${cleanRecipient}@c.us`;
     }

@@ -3,12 +3,49 @@ import { bullMQConnection } from "../config/bullmq.js";
 import { logger } from "../config/logger.js";
 import { emitDeliveryDone, emitDeliveryFailed, emitDeliveryStarted } from "../socket/events.js";
 import DeliveryHistory from "../models/DeliveryHistory.js";
-import nodemailer from "nodemailer";
-import { env } from "../config/env.js";
+import { sendEmail } from "../services/email.service.js";
+import { sendWhatsApp } from "../services/whatsapp.service.js";
 
-const WORKER_NAME = "deliveryQueue";
+const WORKER_NAME = process.env.DELIVERY_QUEUE_NAME || "deliveryQueue";
+
+export const deliverPhotos = async (data) => {
+  const { requestId } = data;
+  if (!requestId) {
+    throw new Error("requestId is required for delivery");
+  }
+
+  const deliveryRecord = await DeliveryHistory.findById(requestId).populate("photoIds");
+  if (!deliveryRecord) throw new Error("Delivery record not found");
+
+  const { recipient, medium, photoIds } = deliveryRecord;
+  logger.info({ requestId, recipient, medium, count: photoIds.length }, "Processing delivery in worker");
+
+  let result = null;
+  if (medium === "email") {
+    result = await deliveryHelpers.sendEmail({
+      recipient,
+      subject: "Your Shared Photos from APES",
+      photos: photoIds
+    });
+  } else if (medium === "whatsapp") {
+    result = await deliveryHelpers.sendWhatsApp({
+      recipient,
+      photos: photoIds
+    });
+  } else {
+    throw new Error(`Unsupported medium: ${medium}`);
+  }
+
+  return {
+    messageId: result.messageId,
+    timestamp: result.timestamp,
+    count: photoIds.length
+  };
+};
 
 export const deliveryHelpers = {
+  sendEmail,
+  sendWhatsApp,
   mockDeliverPhotos: async (data) => {
     const { requestId } = data;
     if (!requestId) {
@@ -112,7 +149,7 @@ export const initDeliveryWorker = (emitter) => {
 
       try {
         // Execute delivery operation generically
-        await deliveryHelpers.mockDeliverPhotos(job.data);
+        const deliveryResult = await deliverPhotos(job.data);
 
         logger.info(
           { jobId: job.id, requestId },
@@ -120,10 +157,18 @@ export const initDeliveryWorker = (emitter) => {
         );
 
         // Update database record status
-        if (requestId) {
+        if (requestId && deliveryResult) {
           await DeliveryHistory.updateOne(
             { _id: requestId },
-            { $set: { status: "delivered" } }
+            {
+              $set: {
+                status: "delivered",
+                format: "links",
+                count: deliveryResult.count,
+                messageId: deliveryResult.messageId || null,
+                deliveredAt: deliveryResult.timestamp || new Date()
+              }
+            }
           );
         }
 
@@ -149,13 +194,22 @@ export const initDeliveryWorker = (emitter) => {
         return {
           success: true,
           processed: true,
-          mock: true
+          messageId: deliveryResult?.messageId
         };
       } catch (err) {
         logger.error(
           { jobId: job.id, attemptsMade: job.attemptsMade, err: err.message },
           "Delivery worker job processing error occurred"
         );
+        
+        // Update database record status to failed
+        if (requestId) {
+          await DeliveryHistory.updateOne(
+            { _id: requestId },
+            { $set: { status: "failed", error: err.message } }
+          );
+        }
+
         // Rethrow to let BullMQ retry policies handle recovery
         throw err;
       }

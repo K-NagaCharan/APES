@@ -2,7 +2,7 @@ import { Queue } from "bullmq";
 import { bullMQConnection } from "../config/bullmq.js";
 import { logger } from "../config/logger.js";
 
-const QUEUE_NAME = "deliveryQueue";
+const QUEUE_NAME = process.env.DELIVERY_QUEUE_NAME || "deliveryQueue";
 
 // Create the singleton queue instance
 export const deliveryQueue = new Queue(QUEUE_NAME, {
@@ -28,7 +28,7 @@ export const deliveryQueue = new Queue(QUEUE_NAME, {
  * @param {string} data.requestId - Unique identifier of the delivery request
  * @returns {Promise<object>} The added or existing BullMQ Job instance
  */
-export async function addDeliveryJob(data) {
+export async function addDeliveryJob(data, opts = {}) {
   if (!data || !data.requestId) {
     throw new Error("Invalid job data. Required: requestId");
   }
@@ -40,7 +40,7 @@ export async function addDeliveryJob(data) {
     const job = await deliveryQueue.add(
       "deliver-photos",
       { requestId: requestIdStr },
-      { jobId: requestIdStr }
+      { jobId: requestIdStr, ...opts }
     );
     logger.info({ jobId: job.id, requestId: requestIdStr }, "Successfully queued delivery job");
     return job;

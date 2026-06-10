@@ -33,6 +33,12 @@ const DeliveryHistorySchema = new mongoose.Schema({
   cloudinaryPublicId: {
     type: String
   },
+  messageId: {
+    type: String
+  },
+  deliveredAt: {
+    type: Date
+  },
   status: {
     type: String,
     enum: ["queued", "delivered", "failed"],
