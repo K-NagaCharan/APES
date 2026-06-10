@@ -33,6 +33,14 @@ const PhotoSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   }
+}, {
+  toObject: { virtuals: true },
+  toJSON: { virtuals: true }
+});
+
+// Virtual getter for standardizing on Photo.imageUrl
+PhotoSchema.virtual("imageUrl").get(function () {
+  return this.url;
 });
 
 // Indexes
