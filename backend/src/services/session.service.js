@@ -2,7 +2,7 @@ import redis from "../config/redis.js";
 import { logger } from "../config/logger.js";
 
 const SESSION_TTL = 60 * 60 * 24; // 24 hours in seconds
-const MAX_MESSAGES = 30; // Cap at 30 messages
+const MAX_MESSAGES = 20; // Cap at 20 messages
 
 /**
  * Returns the default session structure.

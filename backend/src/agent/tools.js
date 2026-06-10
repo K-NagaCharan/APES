@@ -55,7 +55,7 @@ export const TOOLS = [
     type: "function",
     function: {
       name: "sendEmail",
-      description: "Send photos via email.",
+      description: "Send photos via email. If the user refers to 'these photos', 'them', or the most recent search results, photoIds may be omitted and the backend will automatically resolve them using the user's latest photo search.",
       parameters: {
         type: "object",
         properties: {
@@ -64,8 +64,7 @@ export const TOOLS = [
             items: {
               type: "string"
             },
-            minItems: 1,
-            description: "Array of MongoDB photo IDs to email."
+            description: "Array of MongoDB photo IDs to email. Omit this parameter if the user refers to previously searched/found photos (e.g. 'these', 'them', 'the photos')."
           },
           email: {
             type: "string",
@@ -73,7 +72,7 @@ export const TOOLS = [
             description: "The recipient's email address."
           }
         },
-        required: ["photoIds", "email"],
+        required: ["email"],
         additionalProperties: false
       }
     }
@@ -82,7 +81,7 @@ export const TOOLS = [
     type: "function",
     function: {
       name: "sendWhatsApp",
-      description: "Send photos through WhatsApp.",
+      description: "Send photos through WhatsApp. If the user refers to 'these photos', 'them', or the most recent search results, photoIds may be omitted and the backend will automatically resolve them using the user's latest photo search.",
       parameters: {
         type: "object",
         properties: {
@@ -91,15 +90,14 @@ export const TOOLS = [
             items: {
               type: "string"
             },
-            minItems: 1,
-            description: "Array of MongoDB photo IDs to send."
+            description: "Array of MongoDB photo IDs to send. Omit this parameter if the user refers to previously searched/found photos (e.g. 'these', 'them', 'the photos')."
           },
           phoneNumber: {
             type: "string",
             description: "The recipient's WhatsApp phone number in international format."
           }
         },
-        required: ["photoIds", "phoneNumber"],
+        required: ["phoneNumber"],
         additionalProperties: false
       }
     }

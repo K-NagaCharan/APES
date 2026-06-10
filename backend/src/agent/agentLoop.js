@@ -6,9 +6,10 @@ import { saveChatHistory } from "../services/chatHistory.service.js";
 import { updateAgentMemory } from "./memoryManager.js";
 import groq from "../config/groq.js";
 import { logger } from "../config/logger.js";
+import { MODELS } from "../config/models.js";
 
 const MAX_TOOL_DEPTH = 5;
-const MAX_MESSAGES = 30;
+const MAX_MESSAGES = 20;
 const DEFAULT_TEMPERATURE = 0;
 
 /**
@@ -32,6 +33,12 @@ export async function runAgent({ userId, message }) {
 
   // 1. Load session from Redis (fetches current or defaults)
   const session = await getSession(userId);
+
+  // Clean and truncate history immediately upon loading to purge any existing oversized messages/URLs
+  session.messages = cleanHistoryForStorage(session.messages);
+  if (session.messages.length >= MAX_MESSAGES) {
+    session.messages = session.messages.slice(-(MAX_MESSAGES - 1));
+  }
 
   // 2. Append the user message to local memory
   const userMsg = { role: "user", content: message };
@@ -58,7 +65,7 @@ CRITICAL RULES:
 1. Only call tools when the user's request explicitly requires it.
 2. For simple queries (e.g. "Show Dad's photos", "Find my pictures"), call 'searchPhotos' to search the photos, and then output a friendly text summary of the search result. Do NOT call delivery tools ('sendWhatsApp', 'sendEmail') or compression tools ('requestZipConfirmation') unless the user explicitly asks to share, send, or compression is required.
 3. If the user asks to email or WhatsApp photos (e.g., "Email these to Mom"), call the corresponding delivery tool with the correct arguments.
-4. When calling 'searchPhotos', only use the arguments that are relevant to the user request. Do not guess or hallucinate date ranges or events unless specified.
+4. When calling 'searchPhotos', resolve relative date references (like 'January', 'last week', 'Diwali 2023') to their actual ISO date ranges using today's date. Do not guess or hallucinate parameters that are completely unrelated to the user's query.
 5. Today's date is ${new Date().toISOString().split('T')[0]}.`
   };
 
@@ -70,13 +77,94 @@ CRITICAL RULES:
     // Prep messages for Groq by prepending the system instructions dynamically
     const groqMessages = [systemPrompt, ...messages];
 
-    const response = await groq.chat.completions.create({
-      model,
-      messages: groqMessages,
-      tools: TOOLS,
-      tool_choice: "auto",
-      temperature: DEFAULT_TEMPERATURE
-    });
+    let response;
+    try {
+      response = await groq.chat.completions.create({
+        model,
+        messages: groqMessages,
+        tools: TOOLS,
+        tool_choice: "auto",
+        temperature: DEFAULT_TEMPERATURE
+      });
+    } catch (err) {
+      const isToolUseError = err.status === 400 || 
+                            err.message.includes("tool_use_failed") || 
+                            err.message.includes("Failed to call a function");
+
+      if (isToolUseError) {
+        if (model === MODELS.FAST) {
+          logger.warn({ err: err.message }, "Fast model tool execution failed due to Groq parser bug. Retrying with Reasoning model...");
+          try {
+            response = await groq.chat.completions.create({
+              model: MODELS.REASONING,
+              messages: groqMessages,
+              tools: TOOLS,
+              tool_choice: "auto",
+              temperature: DEFAULT_TEMPERATURE
+            });
+          } catch (retryErr) {
+            const failedGen = retryErr.error?.failed_generation || retryErr.failed_generation || retryErr.message;
+            const parsedCall = parseFailedGeneration(failedGen);
+            if (parsedCall) {
+              logger.info({ parsedCall }, "Reasoning model failed tool use. Recovered successfully via manual parsing of failed_generation");
+              response = {
+                choices: [
+                  {
+                    message: {
+                      role: "assistant",
+                      content: null,
+                      tool_calls: [
+                        {
+                          id: "call_" + Math.random().toString(36).substring(2),
+                          type: "function",
+                          function: {
+                            name: parsedCall.name,
+                            arguments: JSON.stringify(parsedCall.args)
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              };
+            } else {
+              throw retryErr;
+            }
+          }
+        } else {
+          // Fast model was not used, meaning we were already on REASONING model and it failed tool use
+          const failedGen = err.error?.failed_generation || err.failed_generation || err.message;
+          const parsedCall = parseFailedGeneration(failedGen);
+          if (parsedCall) {
+            logger.info({ parsedCall }, "Reasoning model failed tool use on first attempt. Recovered successfully via manual parsing of failed_generation");
+            response = {
+              choices: [
+                {
+                  message: {
+                    role: "assistant",
+                    content: null,
+                    tool_calls: [
+                      {
+                        id: "call_" + Math.random().toString(36).substring(2),
+                        type: "function",
+                        function: {
+                          name: parsedCall.name,
+                          arguments: JSON.stringify(parsedCall.args)
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            };
+          } else {
+            throw err;
+          }
+        }
+      } else {
+        throw err;
+      }
+    }
 
     const responseMessage = response.choices[0].message;
 
@@ -110,7 +198,9 @@ CRITICAL RULES:
         
         let result;
         try {
-          result = await executeTool(name, args, userId);
+          // Retrieve the most recent session from Redis to ensure references are resolved correctly
+          const currentSession = await getSession(userId);
+          result = await executeTool(name, args, userId, currentSession);
           
           // Update agent's short-term memory key in Redis
           await updateAgentMemory({
@@ -166,7 +256,7 @@ CRITICAL RULES:
 
   // 6. Reload session from Redis to get the memory updates, then append messages and save
   const latestSession = await getSession(userId);
-  latestSession.messages = messages;
+  latestSession.messages = cleanHistoryForStorage(messages);
 
   if (latestSession.messages.length > MAX_MESSAGES) {
     latestSession.messages = latestSession.messages.slice(-MAX_MESSAGES);
@@ -194,3 +284,57 @@ CRITICAL RULES:
     ...(stoppedBecause ? { stoppedBecause } : {})
   };
 }
+
+/**
+ * Truncate/clean up large messages in history to prevent rate limit (TPM) issues.
+ * Strips the 'url' field from searchPhotos tool results as the LLM does not need it for reasoning.
+ */
+function cleanHistoryForStorage(messages) {
+  return messages.map(msg => {
+    if (msg.role === "tool" && msg.name === "searchPhotos") {
+      try {
+        const parsed = JSON.parse(msg.content);
+        if (Array.isArray(parsed)) {
+          const summarized = parsed.map(photo => ({
+            id: photo.id,
+            date: photo.date,
+            people: photo.people
+          }));
+          return {
+            ...msg,
+            content: JSON.stringify(summarized)
+          };
+        }
+      } catch (err) {
+        // Fallback to original message if parsing fails
+      }
+    }
+    return msg;
+  });
+}
+
+/**
+ * Robust fallback parser for Groq's failed_generation strings.
+ * Extracts function name and arguments in case of Groq API gateway tool parsing bugs.
+ */
+function parseFailedGeneration(failedGen) {
+  if (typeof failedGen !== "string") return null;
+
+  const nameMatch = failedGen.match(/<function=(\w+)/);
+  if (!nameMatch) return null;
+  const name = nameMatch[1];
+
+  const startIdx = failedGen.indexOf("{");
+  const endIdx = failedGen.lastIndexOf("}");
+  if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return null;
+
+  const jsonStr = failedGen.substring(startIdx, endIdx + 1);
+  try {
+    const args = JSON.parse(jsonStr);
+    return { name, args };
+  } catch (err) {
+    logger.warn({ err: err.message, jsonStr }, "Failed to parse JSON from failed_generation manually");
+    return null;
+  }
+}
+

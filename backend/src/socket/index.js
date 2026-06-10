@@ -56,13 +56,17 @@ export const initSocket = (server) => {
   });
 
   io.on("connection", (socket) => {
+    const userId = socket.user.sub.toString();
+    socket.join(userId);
+
     logger.info(
       {
         userId: socket.user.sub,
         username: socket.user.username || "N/A",
-        socketId: socket.id
+        socketId: socket.id,
+        roomJoined: userId
       },
-      "Socket connected successfully"
+      "Socket connected successfully and joined user room"
     );
 
     socket.on("disconnect", (reason) => {

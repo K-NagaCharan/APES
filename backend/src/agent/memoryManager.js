@@ -29,6 +29,15 @@ export async function updateAgentMemory({ userId, toolName, toolArgs, toolResult
         ? result.map((photo) => photo.id)
         : [];
       
+      // Construct a human-readable query summary for rich metadata
+      const queryParts = [];
+      if (args.people && args.people.length > 0) queryParts.push(`people: [${args.people.join(", ")}]`);
+      if (args.fromDate) queryParts.push(`from: ${args.fromDate}`);
+      if (args.toDate) queryParts.push(`to: ${args.toDate}`);
+      if (args.location) queryParts.push(`location: ${args.location}`);
+      if (args.event) queryParts.push(`event: ${args.event}`);
+      const queryStr = queryParts.join(", ") || "all photos";
+
       partialMemory = {
         lastPhotoSearch: {
           people: args.people ?? [],
@@ -36,7 +45,10 @@ export async function updateAgentMemory({ userId, toolName, toolArgs, toolResult
           toDate: args.toDate ?? null,
           location: args.location ?? null,
           event: args.event ?? null,
-          resultIds
+          query: queryStr,
+          photoIds: resultIds,
+          resultIds,
+          timestamp: new Date().toISOString()
         }
       };
       break;

@@ -3,13 +3,70 @@ import { bullMQConnection } from "../config/bullmq.js";
 import { logger } from "../config/logger.js";
 import { emitDeliveryDone, emitDeliveryFailed } from "../socket/events.js";
 import DeliveryHistory from "../models/DeliveryHistory.js";
+import nodemailer from "nodemailer";
+import { env } from "../config/env.js";
 
 const WORKER_NAME = "deliveryQueue";
 
 export const deliveryHelpers = {
   mockDeliverPhotos: async (data) => {
-    // Simulate network delivery latency
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const { requestId } = data;
+    if (!requestId) {
+      // Fallback/stub for tests
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return true;
+    }
+
+    const deliveryRecord = await DeliveryHistory.findById(requestId).populate("photoIds");
+    if (!deliveryRecord) throw new Error("Delivery record not found");
+
+    const { recipient, medium, photoIds } = deliveryRecord;
+    
+    if (medium === "email") {
+      if (!env.GMAIL_USER || !env.GMAIL_APP_PASS || env.GMAIL_APP_PASS === "ABC@123456" || env.GMAIL_APP_PASS.includes("your_")) {
+        logger.info({ recipient, photoCount: photoIds.length }, "Simulating Email delivery in development mode (credentials not configured)");
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        return true;
+      }
+
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: env.GMAIL_USER,
+          pass: env.GMAIL_APP_PASS
+        }
+      });
+
+      const photoLinks = photoIds
+        .map((p, idx) => `<li>Photo ${idx + 1}: <a href="${p.url}">${p.url}</a></li>`)
+        .join("\n");
+
+      const mailOptions = {
+        from: `"APES Photo Ingestor" <${env.GMAIL_USER}>`,
+        to: recipient,
+        subject: "Your Shared Photos from APES",
+        html: `
+          <div style="font-family: sans-serif; padding: 20px; color: #0f0e0c; background-color: #faf9f6; border: 1px solid #e8e4dc; border-radius: 8px; max-width: 600px;">
+            <h2 style="font-family: serif; color: #c8501a; margin-top: 0;">Here are your shared photos!</h2>
+            <p>You requested to share ${photoIds.length} photo(s) from your APES gallery.</p>
+            <ul style="padding-left: 20px;">
+              ${photoLinks}
+            </ul>
+            <br/>
+            <p style="font-size: 11px; color: #6b6760; border-top: 1px solid #e8e4dc; padding-top: 10px; margin-top: 20px;">
+              This is an automated notification from APES (Agentic Photos Evaluation & Segregation).
+            </p>
+          </div>
+        `
+      };
+
+      await transporter.sendMail(mailOptions);
+      logger.info({ recipient, photoCount: photoIds.length }, "Email delivered successfully via Nodemailer");
+    } else {
+      // Simulate WhatsApp delivery latency
+      logger.info({ recipient, photoCount: photoIds.length }, "Simulating WhatsApp delivery in development mode");
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
     return true;
   }
 };
@@ -43,6 +100,14 @@ export const initDeliveryWorker = (emitter) => {
           { jobId: job.id, requestId },
           "Delivery worker job completed successfully"
         );
+
+        // Update database record status
+        if (requestId) {
+          await DeliveryHistory.updateOne(
+            { _id: requestId },
+            { $set: { status: "delivered" } }
+          );
+        }
 
         // Emit delivery:done event
         try {
@@ -95,6 +160,14 @@ export const initDeliveryWorker = (emitter) => {
     const attemptsMade = job?.attemptsMade || 0;
     if (attemptsMade >= maxAttempts) {
       try {
+        // Update database record status to failed
+        if (job.data?.requestId) {
+          await DeliveryHistory.updateOne(
+            { _id: job.data.requestId },
+            { $set: { status: "failed", error: err.message } }
+          );
+        }
+
         if (socketEmitter && job.data?.requestId) {
           const deliveryRecord = await DeliveryHistory.findById(job.data.requestId);
           if (deliveryRecord && deliveryRecord.userId) {

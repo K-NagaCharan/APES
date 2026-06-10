@@ -5,6 +5,7 @@ import { env } from "./config/env.js";
 import { logger } from "./config/logger.js";
 import { initSocket } from "./socket/index.js";
 import { closeBullMQConnection } from "./config/bullmq.js";
+import { initAllWorkers, closeAllWorkers } from "./workers/index.js";
 
 const startServer = async () => {
   logger.info(`Starting APES Backend in ${env.NODE_ENV} mode...`);
@@ -17,7 +18,10 @@ const startServer = async () => {
   });
 
   // Attach Socket.io server
-  initSocket(server);
+  const io = initSocket(server);
+
+  // Initialize background workers
+  initAllWorkers(io);
 
   // Safe process shutdown
   const gracefulShutdown = async (signal) => {
@@ -25,17 +29,20 @@ const startServer = async () => {
     
     server.close(async () => {
       logger.info("HTTP server closed.");
-      try {
-        await redis.quit();
-        logger.info("Redis client disconnected gracefully.");
-      } catch (err) {
-        logger.error({ err }, "Error quitting Redis client during shutdown");
-      }
-      
-      // Gracefully close BullMQ Redis connection client
-      await closeBullMQConnection();
-      
-      process.exit(0);
+        // Teardown BullMQ workers
+        await closeAllWorkers();
+
+        try {
+          await redis.quit();
+          logger.info("Redis client disconnected gracefully.");
+        } catch (err) {
+          logger.error({ err }, "Error quitting Redis client during shutdown");
+        }
+        
+        // Gracefully close BullMQ Redis connection client
+        await closeBullMQConnection();
+        
+        process.exit(0);
     });
 
     // Force exit after 5 seconds if graceful shutdown hangs
