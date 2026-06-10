@@ -1,7 +1,7 @@
 import { Worker } from "bullmq";
 import { bullMQConnection } from "../config/bullmq.js";
 import { logger } from "../config/logger.js";
-import { emitDeliveryDone, emitDeliveryFailed } from "../socket/events.js";
+import { emitDeliveryDone, emitDeliveryFailed, emitDeliveryStarted } from "../socket/events.js";
 import DeliveryHistory from "../models/DeliveryHistory.js";
 import nodemailer from "nodemailer";
 import { env } from "../config/env.js";
@@ -91,6 +91,24 @@ export const initDeliveryWorker = (emitter) => {
     async (job) => {
       const { requestId } = job.data;
       logger.info({ jobId: job.id, requestId }, "Delivery worker job started");
+
+      // Emit delivery:started event
+      try {
+        if (socketEmitter && requestId) {
+          const deliveryRecord = await DeliveryHistory.findById(requestId);
+          if (deliveryRecord && deliveryRecord.userId) {
+            emitDeliveryStarted(socketEmitter, deliveryRecord.userId, {
+              jobId: job.id,
+              deliveryId: requestId
+            });
+          }
+        }
+      } catch (emitError) {
+        logger.warn(
+          { jobId: job.id, err: emitError.message },
+          "Failed to emit delivery:started event"
+        );
+      }
 
       try {
         // Execute delivery operation generically

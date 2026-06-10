@@ -1,8 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
 import * as faceApi from '../services/faceApi';
 import UnknownFaceCard from '../components/faces/UnknownFaceCard';
 import FaceContextModal from '../components/faces/FaceContextModal';
+import { getSocket } from '../services/socket';
+import { useSocketEvents } from '../hooks/useSocketEvents';
+import { getPendingVersion } from '../utils/refreshTracker';
 
 /**
  * FaceLabelingPage
@@ -16,12 +19,22 @@ const FaceLabelingPage = () => {
   const [contextFace, setContextFace] = useState(null);
   const limit = 12; // 12 cards per page fits cleanly in responsive grids
 
+  const [lastFetchedVersion, setLastFetchedVersion] = useState(-1);
+  const [socket, setSocket] = useState(null);
+  const debounceTimerRef = useRef(null);
+
+  useEffect(() => {
+    setSocket(getSocket());
+  }, []);
+
   const fetchUnlabeledFaces = useCallback(async (targetPage) => {
     setLoading(true);
     setError(null);
+    const currentVersion = getPendingVersion();
     try {
       const data = await faceApi.getUnlabeledFaces(targetPage, limit);
       setFaces(data);
+      setLastFetchedVersion(currentVersion);
     } catch (err) {
       setError('Failed to retrieve unlabeled faces. Please verify database connection.');
       toast.error('Error loading faces');
@@ -30,10 +43,38 @@ const FaceLabelingPage = () => {
     }
   }, [limit]);
 
-  // Load faces on initial mount and page changes
+  // Load faces on initial mount and page changes, or if version has advanced
   useEffect(() => {
-    fetchUnlabeledFaces(page);
-  }, [page, fetchUnlabeledFaces]);
+    if (getPendingVersion() > lastFetchedVersion) {
+      fetchUnlabeledFaces(page);
+    }
+  }, [page, fetchUnlabeledFaces, lastFetchedVersion]);
+
+  // Clean up debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
+
+  const triggerDebouncedRefresh = useCallback(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      if (getPendingVersion() > lastFetchedVersion) {
+        fetchUnlabeledFaces(page);
+      }
+    }, 500);
+  }, [page, fetchUnlabeledFaces, lastFetchedVersion]);
+
+  useSocketEvents(socket, {
+    onFaceNew: () => {
+      triggerDebouncedRefresh();
+    }
+  });
 
   // Handle manual naming and optimistic state pruning
   const handleLabelFace = async (faceId, personName, isSuggested = false) => {

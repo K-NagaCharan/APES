@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import useAuth from '../hooks/useAuth';
 import RecognitionProgress from './RecognitionProgress';
+import DeliveryStatus from './DeliveryStatus';
 
 const AppLayout = () => {
   const { user, logout } = useAuth();
@@ -88,6 +89,7 @@ const AppLayout = () => {
       {/* Main Workspace Slot */}
       <div className="flex-grow flex flex-col">
         <RecognitionProgress />
+        <DeliveryStatus />
         <Outlet />
       </div>
     </div>

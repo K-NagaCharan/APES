@@ -56,6 +56,17 @@ export const emitDeliveryFailed = (io, userId, payload) => {
 };
 
 /**
+ * Emit delivery started event to a specific user
+ * @param {object} io - Socket.io Server instance
+ * @param {string} userId - Target user ID
+ * @param {object} payload - Started details
+ */
+export const emitDeliveryStarted = (io, userId, payload) => {
+  if (!io) return;
+  io.to(userId.toString()).emit(SOCKET_EVENTS.DELIVERY_STARTED, payload);
+};
+
+/**
  * Emit delivery zip confirm event to a specific user
  * @param {object} io - Socket.io Server instance
  * @param {string} userId - Target user ID
@@ -65,3 +76,4 @@ export const emitDeliveryZipConfirm = (io, userId, payload) => {
   if (!io) return;
   io.to(userId.toString()).emit(SOCKET_EVENTS.DELIVERY_ZIP_CONFIRM, payload);
 };
+

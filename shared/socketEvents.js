@@ -10,6 +10,7 @@ export const SOCKET_EVENTS = {
   RECOGNITION_PROGRESS: "recognition:progress",
   FACE_NEW: "face:new",
   RECOGNITION_DONE: "recognition:done",
+  DELIVERY_STARTED: "delivery:started",
   DELIVERY_DONE: "delivery:done",
   DELIVERY_FAILED: "delivery:failed",
   DELIVERY_ZIP_CONFIRM: "delivery:zip-confirm"

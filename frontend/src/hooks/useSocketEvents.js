@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { SOCKET_EVENTS } from "../../../shared/socketEvents.js";
+import { incrementPendingVersion } from "../utils/refreshTracker";
 
 /**
  * React hook to register Socket.io event listeners.
@@ -11,6 +12,7 @@ import { SOCKET_EVENTS } from "../../../shared/socketEvents.js";
  * @param {function} [handlers.onRecognitionProgress] - Callback for recognition:progress
  * @param {function} [handlers.onFaceNew] - Callback for face:new
  * @param {function} [handlers.onRecognitionDone] - Callback for recognition:done
+ * @param {function} [handlers.onDeliveryStarted] - Callback for delivery:started
  * @param {function} [handlers.onDeliveryDone] - Callback for delivery:done
  * @param {function} [handlers.onDeliveryFailed] - Callback for delivery:failed
  */
@@ -34,6 +36,7 @@ export const useSocketEvents = (socket, handlers = {}) => {
 
     const handleFaceNew = (payload) => {
       console.log("[SocketEvent] face:new", payload);
+      incrementPendingVersion();
       if (handlersRef.current.onFaceNew) {
         handlersRef.current.onFaceNew(payload);
       }
@@ -43,6 +46,13 @@ export const useSocketEvents = (socket, handlers = {}) => {
       console.log("[SocketEvent] recognition:done", payload);
       if (handlersRef.current.onRecognitionDone) {
         handlersRef.current.onRecognitionDone(payload);
+      }
+    };
+
+    const handleDeliveryStarted = (payload) => {
+      console.log("[SocketEvent] delivery:started", payload);
+      if (handlersRef.current.onDeliveryStarted) {
+        handlersRef.current.onDeliveryStarted(payload);
       }
     };
 
@@ -64,6 +74,7 @@ export const useSocketEvents = (socket, handlers = {}) => {
     socket.on(SOCKET_EVENTS.RECOGNITION_PROGRESS, handleProgress);
     socket.on(SOCKET_EVENTS.FACE_NEW, handleFaceNew);
     socket.on(SOCKET_EVENTS.RECOGNITION_DONE, handleDone);
+    socket.on(SOCKET_EVENTS.DELIVERY_STARTED, handleDeliveryStarted);
     socket.on(SOCKET_EVENTS.DELIVERY_DONE, handleDeliveryDone);
     socket.on(SOCKET_EVENTS.DELIVERY_FAILED, handleDeliveryFailed);
 
@@ -72,8 +83,10 @@ export const useSocketEvents = (socket, handlers = {}) => {
       socket.off(SOCKET_EVENTS.RECOGNITION_PROGRESS, handleProgress);
       socket.off(SOCKET_EVENTS.FACE_NEW, handleFaceNew);
       socket.off(SOCKET_EVENTS.RECOGNITION_DONE, handleDone);
+      socket.off(SOCKET_EVENTS.DELIVERY_STARTED, handleDeliveryStarted);
       socket.off(SOCKET_EVENTS.DELIVERY_DONE, handleDeliveryDone);
       socket.off(SOCKET_EVENTS.DELIVERY_FAILED, handleDeliveryFailed);
     };
   }, [socket]);
 };
+
