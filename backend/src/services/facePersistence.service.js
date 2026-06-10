@@ -32,6 +32,7 @@ export async function processRecognizedFaces(photoId, recognizedFaces) {
   let processed = 0;
   let matched = 0;
   let unknown = 0;
+  const unknownDocIndices = [];
   const docs = [];
 
   // 3. Loop through and evaluate each face representation
@@ -86,6 +87,7 @@ export async function processRecognizedFaces(photoId, recognizedFaces) {
       });
     } else {
       unknown++;
+      unknownDocIndices.push(docs.length);
       docs.push({
         photoId,
         personId: null,
@@ -111,6 +113,9 @@ export async function processRecognizedFaces(photoId, recognizedFaces) {
     savedDocs = await Face.insertMany(docs);
   }
 
+  // Map indices of inserted unknown faces to their saved database documents
+  const createdUnknownFaces = unknownDocIndices.map((index) => savedDocs[index]);
+
   const durationMs = Date.now() - startTime;
 
   // 5. Log execution metrics (no embeddings logged)
@@ -129,6 +134,7 @@ export async function processRecognizedFaces(photoId, recognizedFaces) {
     processed,
     matched,
     unknown,
-    faceIds: savedDocs.map((d) => d._id)
+    faceIds: savedDocs.map((d) => d._id),
+    createdUnknownFaces
   };
 }

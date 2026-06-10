@@ -9,7 +9,7 @@ import { logger } from "../config/logger.js";
 export function initAllWorkers(io) {
   logger.info("Initializing all background workers...");
   initRecognitionWorker(io);
-  initDeliveryWorker();
+  initDeliveryWorker(io);
 }
 
 /**

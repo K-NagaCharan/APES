@@ -4,7 +4,7 @@ import { logger } from "../config/logger.js";
 import Photo from "../models/Photo.js";
 import { recognizeFaces } from "../services/faceRecognition.service.js";
 import { processRecognizedFaces } from "../services/facePersistence.service.js";
-import { emitRecognitionProgress } from "../socket/events.js";
+import { emitRecognitionProgress, emitFaceNew, emitRecognitionDone } from "../socket/events.js";
 
 const WORKER_NAME = "recognitionQueue";
 
@@ -82,12 +82,52 @@ export const initRecognitionWorker = (emitter) => {
         // 75% (Processed): Face data persistence completed
         reportProgress(75);
 
+        // Emit face:new for each newly created unknown face
+        if (summary.createdUnknownFaces && Array.isArray(summary.createdUnknownFaces)) {
+          for (const faceDoc of summary.createdUnknownFaces) {
+            try {
+              if (socketEmitter) {
+                emitFaceNew(socketEmitter, photo.userId, {
+                  faceId: faceDoc._id.toString(),
+                  photoId: photo._id.toString(),
+                  bbox: faceDoc.bbox,
+                  jobId: job.id
+                });
+              }
+            } catch (emitError) {
+              logger.warn(
+                { faceId: faceDoc._id, err: emitError.message },
+                "Failed to emit face:new event"
+              );
+            }
+          }
+        }
+
         // Save processed face count on the photo metadata (stateless: does NOT update status)
         photo.faceCount = summary.processed;
         await photo.save();
 
         // 100% (Completed): Entire recognition pipeline completed successfully
         reportProgress(100);
+
+        // Emit recognition:done event
+        try {
+          if (socketEmitter) {
+            emitRecognitionDone(socketEmitter, photo.userId, {
+              success: true,
+              jobId: job.id,
+              photoId: photo._id.toString(),
+              totalFaces: summary.processed,
+              matchedFaces: summary.matched,
+              unknownFaces: summary.unknown
+            });
+          }
+        } catch (emitError) {
+          logger.warn(
+            { photoId: photo._id, err: emitError.message },
+            "Failed to emit recognition:done event"
+          );
+        }
 
         logger.info(
           { jobId: job.id, photoId, faceCount: photo.faceCount },
