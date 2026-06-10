@@ -6,6 +6,7 @@ import { logger } from "./config/logger.js";
 import { initSocket } from "./socket/index.js";
 import { closeBullMQConnection } from "./config/bullmq.js";
 import { initAllWorkers, closeAllWorkers } from "./workers/index.js";
+import { shutdownWhatsApp } from "./services/whatsapp.service.js";
 
 const startServer = async () => {
   logger.info(`Starting APES Backend in ${env.NODE_ENV} mode...`);
@@ -31,6 +32,9 @@ const startServer = async () => {
       logger.info("HTTP server closed.");
         // Teardown BullMQ workers
         await closeAllWorkers();
+
+        // Shutdown WhatsApp client
+        await shutdownWhatsApp();
 
         try {
           await redis.quit();

@@ -20,6 +20,19 @@ const DeliveryHistorySchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "Photo"
   }],
+  count: {
+    type: Number
+  },
+  format: {
+    type: String,
+    enum: ["links", "zip"]
+  },
+  zipUrl: {
+    type: String
+  },
+  cloudinaryPublicId: {
+    type: String
+  },
   status: {
     type: String,
     enum: ["queued", "delivered", "failed"],
