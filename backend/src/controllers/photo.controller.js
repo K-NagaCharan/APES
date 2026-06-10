@@ -234,3 +234,52 @@ export const bulkDeletePhotos = asyncHandler(async (req, res) => {
     message: `Successfully deleted ${ownedIds.length} photo(s)`
   });
 });
+
+/**
+ * Retrieve details for a specific photo including all its associated faces
+ */
+export const getPhotoDetails = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user._id;
+
+  const photo = await Photo.findById(id);
+  if (!photo) {
+    return errorResponse(res, 404, "Photo not found");
+  }
+
+  // Enforce ownership
+  if (photo.userId.toString() !== userId.toString()) {
+    return errorResponse(res, 403, "Access denied. You do not own this photo.");
+  }
+
+  // Find all faces for this photo and populate person info
+  const faces = await Face.find({ photoId: id, userId })
+    .populate("personId", "name")
+    .select("_id bbox personId")
+    .lean();
+
+  const formattedFaces = faces.map((face) => ({
+    faceId: face._id,
+    bbox: face.bbox,
+    person: face.personId ? {
+      id: face.personId._id,
+      name: face.personId.name
+    } : null
+  }));
+
+  const formattedPhoto = {
+    id: photo._id,
+    userId: photo.userId,
+    url: photo.url,
+    cloudinaryPublicId: photo.cloudinaryPublicId,
+    width: photo.width,
+    height: photo.height,
+    status: photo.status,
+    faceCount: photo.faceCount,
+    uploadDate: photo.uploadDate,
+    faces: formattedFaces
+  };
+
+  return successResponse(res, formattedPhoto, "Photo details retrieved successfully");
+});
+

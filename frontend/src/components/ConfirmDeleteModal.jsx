@@ -1,7 +1,9 @@
 import React from 'react';
 
-const ConfirmDeleteModal = ({ isOpen, onClose, onConfirm, photo }) => {
+const ConfirmDeleteModal = ({ isOpen, onClose, onConfirm, photo, count }) => {
   if (!isOpen) return null;
+
+  const isBulk = count && count > 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -22,15 +24,17 @@ const ConfirmDeleteModal = ({ isOpen, onClose, onConfirm, photo }) => {
               </svg>
             </div>
             <h3 className="text-lg font-serif font-bold text-[#0f0e0c]">
-              Delete Photo
+              {isBulk ? 'Delete Photos' : 'Delete Photo'}
             </h3>
           </div>
 
           <div className="space-y-2">
             <p className="text-sm text-[#3a3834] leading-relaxed">
-              Are you sure you want to permanently delete this photo? This will remove the image from the cloud storage and delete all associated face models.
+              {isBulk
+                ? `Are you sure you want to permanently delete these ${count} selected photos? This will remove the images from the cloud storage and delete all associated face models.`
+                : 'Are you sure you want to permanently delete this photo? This will remove the image from the cloud storage and delete all associated face models.'}
             </p>
-            {photo && (
+            {!isBulk && photo && (
               <div className="flex items-center space-x-3 p-3 bg-[#f2f0eb] rounded-lg border border-[#e8e4dc]">
                 <img
                   src={photo.url}
@@ -54,7 +58,7 @@ const ConfirmDeleteModal = ({ isOpen, onClose, onConfirm, photo }) => {
               Cancel
             </button>
             <button
-              onClick={() => onConfirm(photo.id)}
+              onClick={() => onConfirm(isBulk ? undefined : photo.id)}
               className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-mono uppercase tracking-widest rounded-lg transition active:scale-95 cursor-pointer font-semibold"
             >
               Delete

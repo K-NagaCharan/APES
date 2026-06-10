@@ -7,6 +7,7 @@ import PersonAvatar from '../components/PersonAvatar';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import EmptyState from '../components/EmptyState';
 import PageLoader from '../components/PageLoader';
+import PhotoDetailModal from '../components/PhotoDetailModal';
 
 const Gallery = () => {
   const navigate = useNavigate();
@@ -24,9 +25,13 @@ const Gallery = () => {
   const [people, setPeople] = useState([]);
   const [loadingPeople, setLoadingPeople] = useState(true);
 
+  // Photo Detail Modal
+  const [modalPhotoId, setModalPhotoId] = useState(null);
+
   // Deletion details (Single & Selection)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
+  const [isBulkDelete, setIsBulkDelete] = useState(false);
   const [deletingIds, setDeletingIds] = useState([]);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedPhotoIds, setSelectedPhotoIds] = useState([]);
@@ -104,28 +109,54 @@ const Gallery = () => {
   // Deletion handlers
   const handleDeleteClick = (photo) => {
     setSelectedPhoto(photo);
+    setIsBulkDelete(false);
     setDeleteModalOpen(true);
   };
 
   const handleConfirmDelete = async (photoId) => {
     setDeleteModalOpen(false);
     
-    // Add to deleting list to show loading spinners on the card itself
-    setDeletingIds((prev) => [...prev, photoId]);
-
-    try {
-      await api.delete(`/photos/${photoId}`);
-      toast.success('Photo deleted successfully!');
+    if (isBulkDelete) {
+      if (selectedPhotoIds.length === 0) return;
       
-      // Filter out immediately from UI
-      setPhotos((prev) => prev.filter((p) => p.id !== photoId));
-    } catch (err) {
-      const errMsg = err.response?.data?.message || err.message || 'Failed to delete photo';
-      toast.error(errMsg);
-    } finally {
-      // Remove from deleting loading state
-      setDeletingIds((prev) => prev.filter((id) => id !== photoId));
-      setSelectedPhoto(null);
+      // Add selected IDs to deleting list to show loaders
+      setDeletingIds((prev) => [...prev, ...selectedPhotoIds]);
+
+      try {
+        await api.post('/photos/bulk-delete', { ids: selectedPhotoIds });
+        toast.success(`Successfully deleted ${selectedPhotoIds.length} photo(s)!`);
+        
+        // Filter out immediately from UI
+        setPhotos((prev) => prev.filter((p) => !selectedPhotoIds.includes(p.id)));
+        setIsSelectionMode(false);
+        setSelectedPhotoIds([]);
+        // Refresh people avatars as some face references might be removed
+        fetchPeople();
+      } catch (err) {
+        const errMsg = err.response?.data?.message || err.message || 'Failed to delete photos';
+        toast.error(errMsg);
+      } finally {
+        setDeletingIds((prev) => prev.filter((id) => !selectedPhotoIds.includes(id)));
+      }
+    } else {
+      if (!photoId) return;
+      // Add to deleting list to show loading spinners on the card itself
+      setDeletingIds((prev) => [...prev, photoId]);
+
+      try {
+        await api.delete(`/photos/${photoId}`);
+        toast.success('Photo deleted successfully!');
+        
+        // Filter out immediately from UI
+        setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+      } catch (err) {
+        const errMsg = err.response?.data?.message || err.message || 'Failed to delete photo';
+        toast.error(errMsg);
+      } finally {
+        // Remove from deleting loading state
+        setDeletingIds((prev) => prev.filter((id) => id !== photoId));
+        setSelectedPhoto(null);
+      }
     }
   };
 
@@ -149,30 +180,25 @@ const Gallery = () => {
     }
   };
 
-  const handleBulkDelete = async () => {
+  const handleBulkDeleteClick = () => {
     if (selectedPhotoIds.length === 0) return;
-    
-    const confirmMsg = `Are you sure you want to delete ${selectedPhotoIds.length} photo(s)? This will permanently remove them and all associated faces.`;
-    if (!window.confirm(confirmMsg)) return;
+    setIsBulkDelete(true);
+    setDeleteModalOpen(true);
+  };
 
-    // Add selected IDs to deleting list to show loaders
-    setDeletingIds((prev) => [...prev, ...selectedPhotoIds]);
+  const handlePrevPhoto = () => {
+    if (!modalPhotoId) return;
+    const index = photos.findIndex((p) => p.id === modalPhotoId);
+    if (index > 0) {
+      setModalPhotoId(photos[index - 1].id);
+    }
+  };
 
-    try {
-      await api.post('/photos/bulk-delete', { ids: selectedPhotoIds });
-      toast.success(`Successfully deleted ${selectedPhotoIds.length} photo(s)!`);
-      
-      // Filter out immediately from UI
-      setPhotos((prev) => prev.filter((p) => !selectedPhotoIds.includes(p.id)));
-      setIsSelectionMode(false);
-      setSelectedPhotoIds([]);
-      // Refresh people avatars as some face references might be removed
-      fetchPeople();
-    } catch (err) {
-      const errMsg = err.response?.data?.message || err.message || 'Failed to delete photos';
-      toast.error(errMsg);
-    } finally {
-      setDeletingIds((prev) => prev.filter((id) => !selectedPhotoIds.includes(id)));
+  const handleNextPhoto = () => {
+    if (!modalPhotoId) return;
+    const index = photos.findIndex((p) => p.id === modalPhotoId);
+    if (index < photos.length - 1) {
+      setModalPhotoId(photos[index + 1].id);
     }
   };
 
@@ -206,7 +232,7 @@ const Gallery = () => {
                   {selectedPhotoIds.length === photos.length ? 'Deselect All' : 'Select All'}
                 </button>
                 <button
-                  onClick={handleBulkDelete}
+                  onClick={handleBulkDeleteClick}
                   disabled={selectedPhotoIds.length === 0}
                   className="px-4 py-2 bg-[#c8501a] hover:bg-[#c8501a]/90 disabled:opacity-50 text-white text-xs font-mono uppercase tracking-widest rounded-lg transition active:scale-95 cursor-pointer font-bold"
                 >
@@ -294,6 +320,7 @@ const Gallery = () => {
                   isSelectionMode={isSelectionMode}
                   isSelected={selectedPhotoIds.includes(photo.id)}
                   onSelectToggle={handleSelectToggle}
+                  onPhotoClick={(p) => setModalPhotoId(p.id)}
                 />
               ))}
             </div>
@@ -327,10 +354,23 @@ const Gallery = () => {
       {/* Confirmation Deletion Modal overlay */}
       <ConfirmDeleteModal
         isOpen={deleteModalOpen}
-        onClose={() => setDeleteModalOpen(false)}
+        onClose={() => {
+          setDeleteModalOpen(false);
+          setSelectedPhoto(null);
+        }}
         onConfirm={handleConfirmDelete}
-        photo={selectedPhoto}
+        photo={isBulkDelete ? null : selectedPhoto}
+        count={isBulkDelete ? selectedPhotoIds.length : 0}
       />
+
+      {modalPhotoId && (
+        <PhotoDetailModal
+          photoId={modalPhotoId}
+          onClose={() => setModalPhotoId(null)}
+          onPrev={photos.findIndex((p) => p.id === modalPhotoId) > 0 ? handlePrevPhoto : null}
+          onNext={photos.findIndex((p) => p.id === modalPhotoId) < photos.length - 1 ? handleNextPhoto : null}
+        />
+      )}
     </div>
   );
 };

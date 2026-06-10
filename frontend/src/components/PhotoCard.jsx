@@ -6,7 +6,8 @@ const PhotoCard = ({
   isDeleting,
   isSelectionMode,
   isSelected,
-  onSelectToggle
+  onSelectToggle,
+  onPhotoClick
 }) => {
   // Format Date
   const formatDate = (dateString) => {
@@ -20,10 +21,8 @@ const PhotoCard = ({
 
   return (
     <div
-      onClick={isSelectionMode ? () => onSelectToggle(photo.id) : undefined}
-      className={`relative group bg-white border rounded-xl overflow-hidden shadow-sm hover:shadow-md transition duration-200 flex flex-col h-full ${
-        isSelectionMode ? 'cursor-pointer' : ''
-      } ${
+      onClick={isSelectionMode ? () => onSelectToggle(photo.id) : (onPhotoClick ? () => onPhotoClick(photo) : undefined)}
+      className={`relative group bg-white border rounded-xl overflow-hidden shadow-sm hover:shadow-md transition duration-200 flex flex-col h-full cursor-pointer ${
         isSelectionMode && isSelected 
           ? 'border-[#c8501a] ring-2 ring-[#c8501a]/20' 
           : 'border-[#e8e4dc]'

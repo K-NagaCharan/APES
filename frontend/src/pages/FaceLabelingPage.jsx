@@ -20,6 +20,7 @@ const FaceLabelingPage = () => {
   const limit = 12; // 12 cards per page fits cleanly in responsive grids
 
   const [lastFetchedVersion, setLastFetchedVersion] = useState(-1);
+  const [lastFetchedPage, setLastFetchedPage] = useState(-1);
   const [socket, setSocket] = useState(null);
   const debounceTimerRef = useRef(null);
 
@@ -35,6 +36,7 @@ const FaceLabelingPage = () => {
       const data = await faceApi.getUnlabeledFaces(targetPage, limit);
       setFaces(data);
       setLastFetchedVersion(currentVersion);
+      setLastFetchedPage(targetPage);
     } catch (err) {
       setError('Failed to retrieve unlabeled faces. Please verify database connection.');
       toast.error('Error loading faces');
@@ -45,10 +47,10 @@ const FaceLabelingPage = () => {
 
   // Load faces on initial mount and page changes, or if version has advanced
   useEffect(() => {
-    if (getPendingVersion() > lastFetchedVersion) {
+    if (page !== lastFetchedPage || getPendingVersion() > lastFetchedVersion) {
       fetchUnlabeledFaces(page);
     }
-  }, [page, fetchUnlabeledFaces, lastFetchedVersion]);
+  }, [page, fetchUnlabeledFaces, lastFetchedPage, lastFetchedVersion]);
 
   // Clean up debounce timer on unmount
   useEffect(() => {

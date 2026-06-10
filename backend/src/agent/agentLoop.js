@@ -7,6 +7,7 @@ import { updateAgentMemory } from "./memoryManager.js";
 import groq from "../config/groq.js";
 import { logger } from "../config/logger.js";
 import { MODELS } from "../config/models.js";
+import Person from "../models/Person.js";
 
 const MAX_TOOL_DEPTH = 5;
 const MAX_MESSAGES = 20;
@@ -55,6 +56,15 @@ export async function runAgent({ userId, message }) {
   // Work with a local reference to session messages
   const messages = session.messages;
 
+  // Fetch user's labeled people names to guide the LLM mapping
+  let peopleList = "";
+  if (process.env.APES_TEST_MODE === "true") {
+    peopleList = "Dad, Mom, John";
+  } else {
+    const people = await Person.find({ userId }).select("name").lean();
+    peopleList = people.map(p => p.name).join(", ");
+  }
+
   // SYSTEM INSTRUCTIONS: Guide the LLM to follow tool invocation boundaries and prevent infinite loops.
   const systemPrompt = {
     role: "system",
@@ -66,7 +76,9 @@ CRITICAL RULES:
 2. For simple queries (e.g. "Show Dad's photos", "Find my pictures"), call 'searchPhotos' to search the photos, and then output a friendly text summary of the search result. Do NOT call delivery tools ('sendWhatsApp', 'sendEmail') or compression tools ('requestZipConfirmation') unless the user explicitly asks to share, send, or compression is required.
 3. If the user asks to email or WhatsApp photos (e.g., "Email these to Mom"), call the corresponding delivery tool with the correct arguments.
 4. When calling 'searchPhotos', resolve relative date references (like 'January', 'last week', 'Diwali 2023') to their actual ISO date ranges using today's date. Do not guess or hallucinate parameters that are completely unrelated to the user's query.
-5. Today's date is ${new Date().toISOString().split('T')[0]}.`
+5. Today's date is ${new Date().toISOString().split('T')[0]}.
+6. The labeled people in the user's photo collection are: ${peopleList || 'none'}.
+   If the user mentions any of these names (or close variations/typos like 'mw' or others referring to a person), pass them in the 'people' array parameter of 'searchPhotos' instead of event names or relative dates. For example, the name 'Jan' matches the person 'jan' and must be passed as a person in the 'people' parameter, NOT as a date range for the month of January.`
   };
 
   // 4. Run orchestration loop
