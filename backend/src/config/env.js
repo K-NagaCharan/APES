@@ -26,6 +26,8 @@ export const env = {
   MONGO_URI: process.env.MONGO_URI || "mongodb://localhost:27017/apes",
   REDIS_URL: process.env.REDIS_URL || "redis://localhost:6379",
   GROQ_API_KEY: process.env.GROQ_API_KEY || "",
+  GROQ_FAST_MODEL: process.env.GROQ_FAST_MODEL || "llama-3.1-8b-instant",
+  GROQ_REASONING_MODEL: process.env.GROQ_REASONING_MODEL || "llama-3.3-70b-versatile",
   CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME || "",
   CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY || "",
   CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET || "",
@@ -41,5 +43,8 @@ export const env = {
   FACE_SERVICE_URL: process.env.FACE_SERVICE_URL || "http://localhost:5001",
   FACE_SUGGESTION_THRESHOLD: parseFloat(process.env.FACE_SUGGESTION_THRESHOLD || "0.75"),
   FACE_PROPAGATION_THRESHOLD: parseFloat(process.env.FACE_PROPAGATION_THRESHOLD || "0.85"),
-  DELIVERY_SIZE_THRESHOLD_BYTES: parseInt(process.env.DELIVERY_SIZE_THRESHOLD_BYTES || "26214400", 10)
+  DELIVERY_SIZE_THRESHOLD_BYTES: parseInt(process.env.DELIVERY_SIZE_THRESHOLD_BYTES || "26214400", 10),
+  ZIP_CONFIRMATION_TTL_SECONDS: parseInt(process.env.ZIP_CONFIRMATION_TTL_SECONDS || "600", 10),
+  ZIP_CLEANUP_INTERVAL_HOURS: parseFloat(process.env.ZIP_CLEANUP_INTERVAL_HOURS || "24"),
+  ZIP_RETENTION_HOURS: parseFloat(process.env.ZIP_RETENTION_HOURS || "24")
 };

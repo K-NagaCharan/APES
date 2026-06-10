@@ -3,6 +3,8 @@ import { execute as getPeople } from "./tools/getPeople.js";
 import { execute as sendEmail } from "./tools/sendEmail.js";
 import { execute as sendWhatsApp } from "./tools/sendWhatsApp.js";
 import { execute as requestZipConfirmation } from "./tools/requestZipConfirmation.js";
+import { execute as confirmZipDelivery } from "./tools/confirmZipDelivery.js";
+import { execute as getDeliveryHistory } from "./tools/getDeliveryHistory.js";
 import { resolvePhotoReferences } from "./referenceResolver.js";
 
 /**
@@ -42,6 +44,20 @@ export async function executeTool(toolName, args, userId, session) {
         return { success: true, message: "WhatsApp delivery queued successfully." };
       case "requestZipConfirmation":
         return { requiresConfirmation: true, estimatedSizeMB: safeArgs.estimatedSizeMB, deliveryMethod: safeArgs.deliveryMethod };
+      case "confirmZipDelivery":
+        return { success: true, confirmed: safeArgs.confirmed, sessionId: safeArgs.sessionId };
+      case "getDeliveryHistory":
+        return [
+          {
+            id: "delivery_mock_1",
+            recipient: "mock@example.com",
+            medium: "email",
+            format: "links",
+            count: 5,
+            status: "delivered",
+            createdAt: new Date().toISOString()
+          }
+        ];
       default:
         throw new Error(`Unknown tool "${toolName}"`);
     }
@@ -73,7 +89,13 @@ export async function executeTool(toolName, args, userId, session) {
     }
 
     case "requestZipConfirmation":
-      return requestZipConfirmation(safeArgs);
+      return requestZipConfirmation(safeArgs, userId, session);
+
+    case "confirmZipDelivery":
+      return confirmZipDelivery(safeArgs, userId);
+
+    case "getDeliveryHistory":
+      return getDeliveryHistory(safeArgs, userId);
 
     default:
       throw new Error(`Unknown tool "${toolName}"`);

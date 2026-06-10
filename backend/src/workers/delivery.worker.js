@@ -17,20 +17,22 @@ export const deliverPhotos = async (data) => {
   const deliveryRecord = await DeliveryHistory.findById(requestId).populate("photoIds");
   if (!deliveryRecord) throw new Error("Delivery record not found");
 
-  const { recipient, medium, photoIds } = deliveryRecord;
-  logger.info({ requestId, recipient, medium, count: photoIds.length }, "Processing delivery in worker");
+  const { recipient, medium, photoIds, format, zipUrl } = deliveryRecord;
+  logger.info({ requestId, recipient, medium, count: photoIds.length, format }, "Processing delivery in worker");
 
   let result = null;
   if (medium === "email") {
     result = await deliveryHelpers.sendEmail({
       recipient,
-      subject: "Your Shared Photos from APES",
-      photos: photoIds
+      subject: format === "zip" ? "Your Shared Photos ZIP from APES" : "Your Shared Photos from APES",
+      photos: photoIds,
+      zipUrl
     });
   } else if (medium === "whatsapp") {
     result = await deliveryHelpers.sendWhatsApp({
       recipient,
-      photos: photoIds
+      photos: photoIds,
+      zipUrl
     });
   } else {
     throw new Error(`Unsupported medium: ${medium}`);
@@ -158,12 +160,19 @@ export const initDeliveryWorker = (emitter) => {
 
         // Update database record status
         if (requestId && deliveryResult) {
+          const deliveryRecord = await DeliveryHistory.findById(requestId);
+          const format = deliveryRecord?.format || "links";
+          const zipUrl = deliveryRecord?.zipUrl || null;
+          const cloudinaryPublicId = deliveryRecord?.cloudinaryPublicId || null;
+
           await DeliveryHistory.updateOne(
             { _id: requestId },
             {
               $set: {
                 status: "delivered",
-                format: "links",
+                format,
+                zipUrl,
+                cloudinaryPublicId,
                 count: deliveryResult.count,
                 messageId: deliveryResult.messageId || null,
                 deliveredAt: deliveryResult.timestamp || new Date()

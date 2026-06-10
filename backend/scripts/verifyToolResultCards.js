@@ -70,6 +70,7 @@ const runVerification = async () => {
   await personDad.save();
 
   // Seed photo
+  await Photo.deleteOne({ _id: new mongoose.Types.ObjectId("60c72b2f9b1d8b2bad689d99") });
   const testPhoto = new Photo({
     _id: new mongoose.Types.ObjectId("60c72b2f9b1d8b2bad689d99"),
     userId: testUser._id,

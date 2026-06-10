@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { logger } from "../config/logger.js";
 
 /**
@@ -9,11 +10,19 @@ import { logger } from "../config/logger.js";
  * @returns {object} { success: boolean, photoIds?: Array<string>, error?: string }
  */
 export function resolvePhotoReferences(session, photoIds) {
-  // If photoIds are explicitly provided, use them as-is
+  // If photoIds are explicitly provided, verify if they are valid ObjectIds
   if (Array.isArray(photoIds) && photoIds.length > 0) {
-    logger.info({ count: photoIds.length }, "Using explicitly provided photoIds from tool arguments");
-    return { success: true, photoIds };
+    const isTestMode = process.env.APES_TEST_MODE === "true";
+    const hasValidIds = isTestMode || photoIds.every(id => mongoose.Types.ObjectId.isValid(id));
+
+    if (hasValidIds) {
+      logger.info({ count: photoIds.length }, "Using explicitly provided photoIds from tool arguments");
+      return { success: true, photoIds };
+    }
+
+    logger.warn({ photoIds }, "Explicitly provided photoIds are not valid ObjectIds. Falling back to session memory.");
   }
+
 
   const lastSearch = session?.memory?.lastPhotoSearch;
   if (!lastSearch) {

@@ -227,3 +227,7 @@ export async function createZip({ photos, concurrencyLimit = 3 }) {
     photoCount: photos.length
   };
 }
+
+export const zipHelpers = {
+  createZip
+};

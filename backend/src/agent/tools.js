@@ -124,5 +124,44 @@ export const TOOLS = [
         additionalProperties: false
       }
     }
+  },
+  {
+    type: "function",
+    function: {
+      name: "confirmZipDelivery",
+      description: "Confirm or cancel a pending large photo delivery session using the sessionId provided.",
+      parameters: {
+        type: "object",
+        properties: {
+          sessionId: {
+            type: "string",
+            description: "The UUID session ID for the pending ZIP confirmation."
+          },
+          confirmed: {
+            type: "boolean",
+            description: "True if the user confirms and wants to deliver as a ZIP. False if they reject and want to cancel."
+          }
+        },
+        required: ["sessionId", "confirmed"],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "getDeliveryHistory",
+      description: "Retrieve the user's photo delivery and sharing history records.",
+      parameters: {
+        type: "object",
+        properties: {
+          limit: {
+            type: "number",
+            description: "The maximum number of recent delivery records to retrieve. Defaults to 10."
+          }
+        },
+        additionalProperties: false
+      }
+    }
   }
 ];

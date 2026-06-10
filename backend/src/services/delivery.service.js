@@ -95,3 +95,21 @@ export async function logDelivery({
   await delivery.save();
   return delivery;
 }
+
+/**
+ * Retrieve recent delivery history logs for a user (mainly for AI agent use).
+ * 
+ * @param {object} params
+ * @param {string|mongoose.Types.ObjectId} params.userId
+ * @param {number} [params.limit=10]
+ * @returns {Promise<Array>}
+ */
+export async function getRecentDeliveries({ userId, limit = 10 }) {
+  if (!userId) {
+    throw new Error("userId is required");
+  }
+  return await DeliveryHistory.find({ userId })
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .lean();
+}

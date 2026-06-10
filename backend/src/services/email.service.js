@@ -20,7 +20,7 @@ export class EmailServiceError extends Error {
  * @param {object[]} params.photos - Array of photo documents/objects (each must have url or imageUrl).
  * @returns {Promise<object>} Delivery metadata on success.
  */
-export async function sendEmail({ recipient, subject, photos }) {
+export async function sendEmail({ recipient, subject, photos, zipUrl }) {
   // 1. Validations
   if (!recipient || typeof recipient !== "string" || recipient.trim() === "") {
     throw new EmailServiceError("Recipient email is required", { recipient });
@@ -48,17 +48,34 @@ export async function sendEmail({ recipient, subject, photos }) {
       }
     });
 
-    const photoLinks = photos
-      .map((p, idx) => {
-        const url = p.url || p.imageUrl;
-        if (!url) return null;
-        return `<li>Photo ${idx + 1}: <a href="${url}">${url}</a></li>`;
-      })
-      .filter(Boolean)
-      .join("\n");
+    let htmlBody = "";
+    if (zipUrl) {
+      htmlBody = `
+        <p>Here is the ZIP archive containing the shared photos you requested from your APES gallery:</p>
+        <p style="margin-top: 15px; margin-bottom: 15px;">
+          <a href="${zipUrl}" style="display: inline-block; padding: 10px 20px; background-color: #c8501a; color: white; text-decoration: none; border-radius: 4px; font-weight: bold;">Download ZIP Archive</a>
+        </p>
+      `;
+    } else {
+      const photoLinks = photos
+        .map((p, idx) => {
+          const url = p.url || p.imageUrl;
+          if (!url) return null;
+          return `<li>Photo ${idx + 1}: <a href="${url}">${url}</a></li>`;
+        })
+        .filter(Boolean)
+        .join("\n");
 
-    if (!photoLinks) {
-      throw new EmailServiceError("No valid photo links found to include in the email", { recipient });
+      if (!photoLinks) {
+        throw new EmailServiceError("No valid photo links found to include in the email", { recipient });
+      }
+
+      htmlBody = `
+        <p>Here are the shared photos you requested from your APES gallery:</p>
+        <ul style="padding-left: 20px; line-height: 1.6;">
+          ${photoLinks}
+        </ul>
+      `;
     }
 
     const mailOptions = {
@@ -68,10 +85,7 @@ export async function sendEmail({ recipient, subject, photos }) {
       html: `
         <div style="font-family: sans-serif; padding: 20px; color: #0f0e0c; background-color: #faf9f6; border: 1px solid #e8e4dc; border-radius: 8px; max-width: 600px;">
           <h2 style="font-family: serif; color: #c8501a; margin-top: 0;">${subject}</h2>
-          <p>Here are the shared photos you requested from your APES gallery:</p>
-          <ul style="padding-left: 20px; line-height: 1.6;">
-            ${photoLinks}
-          </ul>
+          ${htmlBody}
           <br/>
           <p style="font-size: 11px; color: #6b6760; border-top: 1px solid #e8e4dc; padding-top: 10px; margin-top: 20px;">
             This is an automated notification from APES (Agentic Photos Evaluation & Segregation).
@@ -80,7 +94,7 @@ export async function sendEmail({ recipient, subject, photos }) {
       `
     };
 
-    logger.info({ recipient, photoCount: photos.length }, "Sending email via Nodemailer");
+    logger.info({ recipient, photoCount: photos.length, isZip: !!zipUrl }, "Sending email via Nodemailer");
     const info = await transporter.sendMail(mailOptions);
     logger.info({ recipient, messageId: info.messageId }, "Email sent successfully");
 

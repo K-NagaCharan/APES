@@ -125,7 +125,7 @@ export async function isWhatsAppReady() {
  * @param {string} [params.text] - Custom text message body (takes priority if provided).
  * @returns {Promise<object>} Delivery metadata.
  */
-export async function sendWhatsApp({ recipient, photos, text }) {
+export async function sendWhatsApp({ recipient, photos, text, zipUrl }) {
   if (!client) {
     throw new WhatsAppServiceError("WhatsApp client has not been initialized. Call initializeWhatsApp() first.");
   }
@@ -144,9 +144,11 @@ export async function sendWhatsApp({ recipient, photos, text }) {
   let message = "";
   if (text && typeof text === "string" && text.trim() !== "") {
     message = text;
+  } else if (zipUrl) {
+    message = `Here is the ZIP archive containing the shared photos you requested from your APES gallery:\n\n${zipUrl}\n\nThis is an automated notification from APES.`;
   } else {
     if (!photos || !Array.isArray(photos)) {
-      throw new WhatsAppServiceError("Either text or photos array must be provided");
+      throw new WhatsAppServiceError("Either text, zipUrl, or photos array must be provided");
     }
 
     const photoLinks = photos

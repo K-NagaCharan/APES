@@ -39,6 +39,9 @@ const DeliveryHistorySchema = new mongoose.Schema({
   deliveredAt: {
     type: Date
   },
+  zipDeletedAt: {
+    type: Date
+  },
   status: {
     type: String,
     enum: ["queued", "delivered", "failed"],

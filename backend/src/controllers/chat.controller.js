@@ -3,6 +3,7 @@ import { successResponse, errorResponse } from "../utils/apiResponse.js";
 import { formatAgentResponse } from "../utils/chatFormatter.js";
 import { logger } from "../config/logger.js";
 import { clearChatHistory } from "../services/chatHistory.service.js";
+import { clearSession } from "../services/session.service.js";
 
 /**
  * Handle POST /api/chat protected endpoint
@@ -67,6 +68,7 @@ export async function clearChat(req, res) {
   const userId = req.user._id.toString();
   try {
     await clearChatHistory(userId);
+    await clearSession(userId);
     return successResponse(res, null, "Chat history cleared successfully.");
   } catch (error) {
     logger.error(

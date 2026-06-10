@@ -46,7 +46,7 @@ export async function runAgent({ userId, message }) {
   session.messages.push(userMsg);
 
   // 3. Select model using deterministic heuristic
-  const model = selectModel(message);
+  let model = selectModel(message);
 
   let depth = 0;
   const executedToolCalls = [];
@@ -55,6 +55,9 @@ export async function runAgent({ userId, message }) {
 
   // Work with a local reference to session messages
   const messages = session.messages;
+
+  // Pre-filter tools based on query context to keep prompt size optimized
+  const activeTools = getRelevantTools(message, messages);
 
   // Fetch user's labeled people names to guide the LLM mapping
   let peopleList = "";
@@ -68,17 +71,14 @@ export async function runAgent({ userId, message }) {
   // SYSTEM INSTRUCTIONS: Guide the LLM to follow tool invocation boundaries and prevent infinite loops.
   const systemPrompt = {
     role: "system",
-    content: `You are APES AI, a helpful photo assistant.
-You have access to tools to help the user search and share their photos.
-
-CRITICAL RULES:
-1. Only call tools when the user's request explicitly requires it.
-2. For simple queries (e.g. "Show Dad's photos", "Find my pictures"), call 'searchPhotos' to search the photos, and then output a friendly text summary of the search result. Do NOT call delivery tools ('sendWhatsApp', 'sendEmail') or compression tools ('requestZipConfirmation') unless the user explicitly asks to share, send, or compression is required.
-3. If the user asks to email or WhatsApp photos (e.g., "Email these to Mom"), call the corresponding delivery tool with the correct arguments.
-4. When calling 'searchPhotos', resolve relative date references (like 'January', 'last week', 'Diwali 2023') to their actual ISO date ranges using today's date. Do not guess or hallucinate parameters that are completely unrelated to the user's query.
-5. Today's date is ${new Date().toISOString().split('T')[0]}.
-6. The labeled people in the user's photo collection are: ${peopleList || 'none'}.
-   If the user mentions any of these names (or close variations/typos like 'mw' or others referring to a person), pass them in the 'people' array parameter of 'searchPhotos' instead of event names or relative dates. For example, the name 'Jan' matches the person 'jan' and must be passed as a person in the 'people' parameter, NOT as a date range for the month of January.`
+    content: `You are APES AI, a helpful photo assistant. Today is ${new Date().toISOString().split('T')[0]}.
+Labeled people in user collection: ${peopleList || 'none'}.
+Rules:
+1. Only call tools when explicitly required by the user's request.
+2. For search queries, call 'searchPhotos'. Do NOT call delivery/zip tools unless explicitly asked to send/share.
+3. If asked to email or WhatsApp photos, call the corresponding tool.
+4. Resolve relative dates to absolute ISO dates.
+5. Match names in queries (like 'Jan') to labeled people.`
   };
 
   // 4. Run orchestration loop
@@ -86,39 +86,125 @@ CRITICAL RULES:
     depth++;
     logger.info({ depth, model }, "Executing agent loop iteration");
 
-    // Prep messages for Groq by prepending the system instructions dynamically
-    const groqMessages = [systemPrompt, ...messages];
+    // Prep messages for Groq by prepending the system instructions dynamically to a compact context window
+    const activeMessages = messages.slice(-10); // Keep only the last 10 messages for prompt compacting
+    const groqMessages = [systemPrompt, ...activeMessages];
+
+    // Estimate prompt token count before LLM call
+    const estimatedTokens = estimateTokenCount(groqMessages, activeTools);
+    logger.info({ estimatedTokens }, "Estimated prompt token count before Groq LLM call");
 
     let response;
-    try {
-      response = await groq.chat.completions.create({
-        model,
-        messages: groqMessages,
-        tools: TOOLS,
-        tool_choice: "auto",
-        temperature: DEFAULT_TEMPERATURE
-      });
-    } catch (err) {
-      const isToolUseError = err.status === 400 || 
-                            err.message.includes("tool_use_failed") || 
-                            err.message.includes("Failed to call a function");
+    let activeModel = model;
+    let rateLimitedModels = new Set();
 
-      if (isToolUseError) {
-        if (model === MODELS.FAST) {
-          logger.warn({ err: err.message }, "Fast model tool execution failed due to Groq parser bug. Retrying with Reasoning model...");
-          try {
-            response = await groq.chat.completions.create({
-              model: MODELS.REASONING,
-              messages: groqMessages,
-              tools: TOOLS,
-              tool_choice: "auto",
-              temperature: DEFAULT_TEMPERATURE
-            });
-          } catch (retryErr) {
-            const failedGen = retryErr.error?.failed_generation || retryErr.failed_generation || retryErr.message;
+    while (true) {
+      // Audit and log the exact request payload sent to Groq
+      logger.info({
+        groqPayload: {
+          model: activeModel,
+          messages: groqMessages,
+          tools: activeTools,
+          tool_choice: "auto"
+        }
+      }, "Sending request payload to Groq");
+
+      try {
+        response = await groq.chat.completions.create({
+          model: activeModel,
+          messages: groqMessages,
+          tools: activeTools,
+          tool_choice: "auto",
+          temperature: DEFAULT_TEMPERATURE
+        });
+        model = activeModel; // Update successfully used model
+        break; // Success!
+      } catch (err) {
+        const isRateLimit = err.status === 429 || 
+                            err.type === "RateLimitError" || 
+                            err.name === "RateLimitError" || 
+                            err.message?.includes("429") || 
+                            err.message?.includes("rate_limit");
+
+        if (isRateLimit) {
+          rateLimitedModels.add(activeModel);
+          logger.warn({ model: activeModel, error: err.message }, "Groq model hit rate limit.");
+          
+          // Determine fallback model
+          const fallback = activeModel === MODELS.REASONING ? MODELS.FAST : MODELS.REASONING;
+          if (rateLimitedModels.has(fallback)) {
+            logger.error("All available models are rate-limited. Failing.");
+            throw err;
+          }
+          
+          logger.info({ fallback }, "Retrying with fallback model...");
+          activeModel = fallback;
+          continue; // Try again with fallback
+        }
+
+        const isToolUseError = err.status === 400 || 
+                              err.message.includes("tool_use_failed") || 
+                              err.message.includes("Failed to call a function");
+
+        if (isToolUseError) {
+          if (activeModel === MODELS.FAST && !rateLimitedModels.has(MODELS.REASONING)) {
+            logger.warn({ err: err.message }, "Fast model tool execution failed due to Groq parser bug. Retrying with Reasoning model...");
+            try {
+              response = await groq.chat.completions.create({
+                model: MODELS.REASONING,
+                messages: groqMessages,
+                tools: activeTools,
+                tool_choice: "auto",
+                temperature: DEFAULT_TEMPERATURE
+              });
+              model = MODELS.REASONING;
+              break; // Success!
+            } catch (retryErr) {
+              const isRetryRateLimit = retryErr.status === 429 || 
+                                       retryErr.type === "RateLimitError" || 
+                                       retryErr.name === "RateLimitError" || 
+                                       retryErr.message?.includes("429") || 
+                                       retryErr.message?.includes("rate_limit");
+              if (isRetryRateLimit) {
+                rateLimitedModels.add(MODELS.REASONING);
+              }
+
+              const failedGen = retryErr.error?.failed_generation || retryErr.failed_generation || retryErr.message;
+              const parsedCall = parseFailedGeneration(failedGen);
+              if (parsedCall) {
+                logger.info({ parsedCall }, "Reasoning model failed tool use. Recovered successfully via manual parsing of failed_generation");
+                response = {
+                  choices: [
+                    {
+                      message: {
+                        role: "assistant",
+                        content: null,
+                        tool_calls: [
+                          {
+                            id: "call_" + Math.random().toString(36).substring(2),
+                            type: "function",
+                            function: {
+                              name: parsedCall.name,
+                              arguments: JSON.stringify(parsedCall.args)
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                };
+                model = MODELS.REASONING;
+                break; // Recovered!
+              } else {
+                throw retryErr;
+              }
+            }
+          } else {
+            // Already on REASONING model, or FAST failed and REASONING is rate-limited
+            const failedGen = err.error?.failed_generation || err.failed_generation || err.message;
             const parsedCall = parseFailedGeneration(failedGen);
             if (parsedCall) {
-              logger.info({ parsedCall }, "Reasoning model failed tool use. Recovered successfully via manual parsing of failed_generation");
+              logger.info({ parsedCall }, "Reasoning model failed tool use on first attempt. Recovered successfully via manual parsing of failed_generation");
               response = {
                 choices: [
                   {
@@ -139,42 +225,15 @@ CRITICAL RULES:
                   }
                 ]
               };
+              model = MODELS.REASONING;
+              break; // Recovered!
             } else {
-              throw retryErr;
+              throw err;
             }
           }
         } else {
-          // Fast model was not used, meaning we were already on REASONING model and it failed tool use
-          const failedGen = err.error?.failed_generation || err.failed_generation || err.message;
-          const parsedCall = parseFailedGeneration(failedGen);
-          if (parsedCall) {
-            logger.info({ parsedCall }, "Reasoning model failed tool use on first attempt. Recovered successfully via manual parsing of failed_generation");
-            response = {
-              choices: [
-                {
-                  message: {
-                    role: "assistant",
-                    content: null,
-                    tool_calls: [
-                      {
-                        id: "call_" + Math.random().toString(36).substring(2),
-                        type: "function",
-                        function: {
-                          name: parsedCall.name,
-                          arguments: JSON.stringify(parsedCall.args)
-                        }
-                      }
-                    ]
-                  }
-                }
-              ]
-            };
-          } else {
-            throw err;
-          }
+          throw err;
         }
-      } else {
-        throw err;
       }
     }
 
@@ -232,12 +291,15 @@ CRITICAL RULES:
           result
         });
 
+        // Minimize tool execution result for history context to save prompt tokens
+        const minimizedResult = getMinimizedToolResult(name, result);
+
         // Append tool result message
         const toolMsg = {
           role: "tool",
           tool_call_id: toolCall.id,
           name,
-          content: JSON.stringify(result)
+          content: JSON.stringify(minimizedResult)
         };
         messages.push(toolMsg);
       }
@@ -326,6 +388,79 @@ function cleanHistoryForStorage(messages) {
 }
 
 /**
+ * Filter available tools based on message query and conversation history to save token count.
+ */
+function getRelevantTools(message, history = []) {
+  const historyText = history.map(m => m.content || "").join(" ");
+  const normalizedText = (message + " " + historyText).toLowerCase();
+
+  const tools = [];
+
+  const searchPhotosTool = TOOLS.find(t => t.function.name === "searchPhotos");
+  if (searchPhotosTool) {
+    tools.push(searchPhotosTool);
+  }
+
+  const hasPeopleKeywords = ["people", "person", "who", "names", "list", "label", "contacts"].some(kw => normalizedText.includes(kw));
+  if (hasPeopleKeywords) {
+    const getPeopleTool = TOOLS.find(t => t.function.name === "getPeople");
+    if (getPeopleTool) {
+      tools.push(getPeopleTool);
+    }
+  }
+
+  const hasDeliveryKeywords = ["email", "mail", "gmail", "send", "whatsapp", "phone", "number", "share", "deliver", "zip", "confirm", "yes", "no", "ok", "sure", "cancel"].some(kw => normalizedText.includes(kw));
+  if (hasDeliveryKeywords) {
+    const deliveryTools = TOOLS.filter(t => 
+      ["sendEmail", "sendWhatsApp", "requestZipConfirmation", "confirmZipDelivery"].includes(t.function.name)
+    );
+    tools.push(...deliveryTools);
+  }
+
+  const hasHistoryKeywords = ["history", "sent", "share history", "delivery history", "past", "previous shares"].some(kw => normalizedText.includes(kw));
+  if (hasHistoryKeywords) {
+    const historyTool = TOOLS.find(t => t.function.name === "getDeliveryHistory");
+    if (historyTool) {
+      tools.push(historyTool);
+    }
+  }
+
+  return tools;
+}
+
+/**
+ * Minimize tool execution result structure to optimize LLM prompt token size.
+ */
+function getMinimizedToolResult(name, result) {
+  if (name === "searchPhotos" && Array.isArray(result)) {
+    return result.map(photo => ({
+      id: photo.id,
+      date: photo.date,
+      people: photo.people
+    }));
+  }
+  return result;
+}
+
+/**
+ * Estimate the token count of a given messages array and tools list.
+ */
+function estimateTokenCount(messages, tools) {
+  let text = "";
+  for (const msg of messages) {
+    text += msg.role || "";
+    text += msg.content || "";
+    if (msg.tool_calls) {
+      text += JSON.stringify(msg.tool_calls);
+    }
+  }
+  if (tools) {
+    text += JSON.stringify(tools);
+  }
+  return Math.ceil(text.length / 4);
+}
+
+/**
  * Robust fallback parser for Groq's failed_generation strings.
  * Extracts function name and arguments in case of Groq API gateway tool parsing bugs.
  */
@@ -349,4 +484,5 @@ function parseFailedGeneration(failedGen) {
     return null;
   }
 }
+
 
