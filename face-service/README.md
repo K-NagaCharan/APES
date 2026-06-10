@@ -1,6 +1,6 @@
 # Face Recognition Microservice
 
-This is the Python microservice responsible for running face detection and face embedding generation for the APES system. It uses [DeepFace](https://github.com/serengil/deepface) under the hood with `retinaface` for face bounding box localization and `Facenet512` for face vector similarity scoring.
+This is the Python microservice responsible for running face detection and face embedding generation for the APES system. It uses [InsightFace](https://github.com/deepinsight/insightface) under the hood with the `buffalo_l` model for face bounding box localization and 512-dimensional embedding extraction, and incorporates an IoU-based Non-Maximum Suppression (NMS) deduplication algorithm (threshold: 0.70) to prevent duplicate face records.
 
 ## Project Structure
 
@@ -18,19 +18,18 @@ face-service/
 ├── routes/               # HTTP Controller/Route layers
 │   ├── __init__.py
 │   ├── health.py         # /health endpoint
-│   └── recognize.py      # /recognize endpoint (placeholder)
+│   └── recognize.py      # /recognize endpoint
 │
 ├── services/             # Core business logic helpers
 │   ├── __init__.py
-│   └── face_service.py   # Face recognition algorithms (placeholder)
+│   └── face_service.py   # Face recognition and deduplication algorithms
 │
 ├── models/               # ML weights and model definitions
-│   ├── __init__.py
-│   └── model_loader.py   # Model download and caching loader (placeholder)
+│   └── __init__.py
 │
 └── utils/                # Utility scripts
     ├── __init__.py
-    └── logger.py         # Logging helpers (placeholder)
+    └── image_utils.py    # Image download and conversion helpers
 ```
 
 ## Setup Guide
@@ -72,8 +71,6 @@ Copy `.env.example` to a new `.env` file:
 cp .env.example .env
 ```
 
-You can customize options like `PORT`, `FACE_MODEL`, or `DETECTOR_BACKEND` here.
-
 ## Running the Server
 
 To start the local development server, run:
@@ -88,8 +85,8 @@ Upon boot, the console will print the startup configuration banner:
 ====================================
 Face Service Started
 Port: 5001
-Model: Facenet512
-Detector: retinaface
+Model: buffalo_l
+Detector: buffalo_l
 ====================================
 ```
 
@@ -105,31 +102,31 @@ Check if the microservice is operational and which models are active.
     ```json
     {
       "status": "healthy",
-      "model": "Facenet512",
-      "detector": "retinaface"
+      "service": "face-service",
+      "model": "buffalo_l",
+      "detector": "buffalo_l"
     }
     ```
 
-### 2. Face Recognition (Future)
-Process uploaded image to locate faces and generate vectors.
+### 2. Face Recognition
+Process an image URL to locate faces, deduplicate overlapping bounding boxes via IoU NMS, and extract 512-dimensional embeddings.
 
 *   **Endpoint:** `POST /recognize`
-*   **Status:** *Not Implemented (Task 3.3)*
-*   **Expected Body:**
+*   **Request Body:**
     ```json
     {
       "imageUrl": "https://res.cloudinary.com/demo/image/upload/v1234/apes/photo.jpg"
     }
     ```
-*   **Expected Response (200 OK):**
+*   **Response (200 OK):**
     ```json
     {
-      "success": true,
       "faces": [
         {
           "bbox": { "x": 120, "y": 80, "w": 50, "h": 50 },
-          "embedding": [0.0123, -0.0456, 0.0890, 0.0021]
+          "embedding": [0.0123, -0.0456, 0.0890, "...", 0.0021]
         }
       ]
     }
     ```
+

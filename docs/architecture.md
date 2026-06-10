@@ -21,7 +21,7 @@ graph TD
 ### Component Boundaries
 - **React Client (Vite):** Visualizer layer. Standard React SPA, styling done via Tailwind. Renders the gallery, overlay canvas for face labeling, real-time toast alerts, and a chat interface. Communicates via Socket.io and Axios.
 - **Express API (Node.js):** The orchestration core. Owns the REST API, websocket channels (via Socket.io), session routing, database schemas (via Mongoose), and the agent loop.
-- **Python Face Service (Flask):** The machine learning processor. Wrapped in a simple Flask wrapper. Accepts image URLs, runs RetinaFace to localise bounding boxes, and generates 512-dimensional float embeddings using FaceNet512.
+- **Python Face Service (Flask):** The machine learning processor. Wrapped in a simple Flask wrapper. Accepts image URLs, runs InsightFace (Buffalo_L model) to locate bounding boxes and generate 512-dimensional float embeddings, using an IoU-based deduplication filter to prevent duplicate face records.
 - **Redis (Upstash/Local):** Serves two distinct namespaces:
   1. *BullMQ Job Queues:* Organises asynchronous tasks for face extraction, email sending, and WhatsApp delivery.
   2. *Session Store:* Caches chat history and state contexts with a 24-hour TTL.
@@ -54,22 +54,22 @@ sequenceDiagram
     
     Note over Worker: Background thread picks up job
     Worker->>Python: POST /recognize { imageUrl }
-    Python->>Python: Fetch image + RetinaFace detection
-    Python->>Python: Generate 512-float vector via FaceNet512
+    Python->>Python: Fetch image + InsightFace detection & embedding extraction
+    Python->>Python: Apply IoU deduplication (NMS threshold 0.70)
     Python-->>Worker: Return array of faces [ { bbox, embedding } ]
     
     loop Match Embeddings
-        Worker->>DB: Load all existing Face embeddings for user
-        Worker->>Worker: Calculate cosine similarity
-        alt Match Found (> threshold)
-            Worker->>DB: Save Face { personId, embedding, bbox, isLabeled: true }
+        Worker->>DB: Load all existing Person centroids for user
+        Worker->>Worker: Calculate cosine similarity against centroids
+        alt Match Found (similarity >= threshold)
+            Worker->>DB: Save Face { personId, userId, embedding, bbox, isLabeled: true }
         else No Match
-            Worker->>DB: Save Face { personId: null, embedding, bbox, isLabeled: false }
+            Worker->>DB: Save Face { personId: null, userId, embedding, bbox, isLabeled: false }
             Worker->>API: Emit socket event 'face:new'
             API-->>User: Toast: Unknown face detected
         end
     end
-    Worker->>DB: Update Photo status to 'completed'
+    Worker->>DB: Update Photo status to 'completed', increment faceCount
     Worker->>API: Job complete event
     API-->>User: Emit socket event 'recognition:done'
 ```

@@ -27,6 +27,7 @@ const PhotoSchema = new mongoose.Schema({
   width: { type: Number },
   height: { type: Number },
   status: { type: String, enum: ['processing', 'completed', 'failed'], default: 'processing' },
+  faceCount: { type: Number, default: 0 },
   uploadDate: { type: Date, default: Date.now }
 });
 ```
@@ -37,6 +38,9 @@ Represents named personas recognized by the system.
 const PersonSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   name: { type: String, required: true, trim: true }, // Labeled name (e.g. "Dad", "Grandma")
+  nameNormalized: { type: String, required: true, lowercase: true, trim: true },
+  centroid: { type: [Number], default: null }, // Person embedding centroid vector (512-dim)
+  centroidCount: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now }
 });
 ```
@@ -47,7 +51,9 @@ Binds extracted vector embeddings and spatial coordinates to a Photo and Person.
 const FaceSchema = new mongoose.Schema({
   photoId: { type: mongoose.Schema.Types.ObjectId, ref: 'Photo', required: true },
   personId: { type: mongoose.Schema.Types.ObjectId, ref: 'Person', default: null }, // Null if unlabeled
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   embedding: { type: [Number], required: true }, // 512-dimensional vector float array
+  embeddingDimension: { type: Number, required: true, default: 512 },
   bbox: {
     x: { type: Number, required: true }, // Percentages or pixel coordinates
     y: { type: Number, required: true },
@@ -55,6 +61,7 @@ const FaceSchema = new mongoose.Schema({
     h: { type: Number, required: true }
   },
   isLabeled: { type: Boolean, default: false },
+  labelSource: { type: String, enum: ['manual', 'propagation'], default: null },
   createdAt: { type: Date, default: Date.now }
 });
 ```
@@ -102,12 +109,20 @@ To maintain performance (latency <= 50ms) as data sizes increase, MongoDB indexe
   * *Reason:* Supports joining detected faces onto photos. Vital when rendering image search results with bounding box overlays.
 * **`{ isLabeled: 1 }`**
   * *Reason:* Used in the labeling UI to quickly find all detected faces that remain unidentified (`isLabeled: false`).
+* **`{ userId: 1 }`**
+  * *Reason:* Used to scope face records per user.
 
 ### `Photo` Collection Indexes
 * **`{ userId: 1, uploadDate: -1 }`**
   * *Reason:* Powers the main gallery feed. Orders photos chronologically per authenticated user.
 * **`{ userId: 1 }`**
   * *Reason:* Scopes all photo retrieval queries to the active user's environment.
+* **`{ status: 1 }`**
+  * *Reason:* Supports indexing processing/completed/failed status checks.
+
+### `Person` Collection Indexes
+* **`{ userId: 1, nameNormalized: 1 }` (Unique)**
+  * *Reason:* Compound index to prevent duplicate named persons for the same user.
 
 ### `DeliveryHistory` Indexes
 * **`{ userId: 1, createdAt: -1 }`**

@@ -6,7 +6,7 @@ This document lists the architectural decisions made for APES (Agentic Photos Ev
 
 | Core Decisional Area | Selection | Alternatives Considered | Technical Justification |
 | :--- | :--- | :--- | :--- |
-| **Face Recognition Runtime** | **Python (DeepFace)** | `face-api.js` (Node) | FaceNet512 + RetinaFace model accuracy is superior to JS models under difficult lighting/angles. Keeping ML logic in Python mirrors standard production boundaries. |
+| **Face Recognition Runtime** | **Python (InsightFace)** | `face-api.js` (Node), DeepFace (Python) | InsightFace (Buffalo_L) accuracy and speed are superior to DeepFace and JS models under difficult lighting/angles. Keeping ML logic in Python mirrors standard production boundaries. |
 | **Embedding Storage** | **MongoDB (Float Array)** | Qdrant, Pinecone | At a scale of <=10,000 faces, calculating cosine similarity in Node.js takes <=20ms. Avoids provisioning separate databases prematurely. |
 | **Vector DB Scaling** | **Qdrant (v2 phase)** | MongoDB embeddings (permanently) | Deferring Qdrant prevents resume-padding. Qdrant is plan-scoped for v2 if database scale exceeds 50,000 embeddings. Schema design allows transparent query-layer migrations. |
 | **Session & Chat Memory** | **Redis** | MongoDB | Session state has a 24-hour TTL, is highly mutable, and requires sub-millisecond reads. MongoDB's write overhead and disk persistence are unnecessary. |

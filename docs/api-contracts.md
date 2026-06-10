@@ -273,7 +273,7 @@ All public endpoints are prefixed with `/api`. Protected routes require a `Beare
 
 ### Recognize Faces
 * **Path:** `POST /recognize`
-* **Endpoint URL:** `http://localhost:8001/recognize`
+* **Endpoint URL:** `http://localhost:5001/recognize`
 * **Request Body:**
 ```json
 {
@@ -300,13 +300,13 @@ All public endpoints are prefixed with `/api`. Protected routes require a `Beare
 
 ### Health Check
 * **Path:** `GET /health`
-* **Endpoint URL:** `http://localhost:8001/health`
+* **Endpoint URL:** `http://localhost:5001/health`
 * **Success Response (200 OK):**
 ```json
 {
   "status": "healthy",
-  "model": "Facenet512",
-  "detector": "retinaface"
+  "model": "buffalo_l",
+  "detector": "buffalo_l"
 }
 ```
 

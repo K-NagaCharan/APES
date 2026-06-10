@@ -275,7 +275,7 @@ footer{border-top:0.5px solid var(--rule);padding:3rem 2rem;text-align:center}
       </div>
       <div class="card card-new">
         <div class="card-title card-title-new">What the system actually does</div>
-        <div class="card-body card-body-new">DeepFace extracts 512-dim face embeddings. Groq agent resolves multi-step commands via tool calling. BullMQ workers process jobs without blocking the API. Delivery service checks payload size before sending — triggering a confirmation flow and archiver-based ZIP compression when limits are exceeded. Socket.io streams every event in real time.</div>
+        <div class="card-body card-body-new">InsightFace extracts 512-dim face embeddings. Groq agent resolves multi-step commands via tool calling. BullMQ workers process jobs without blocking the API. Delivery service checks payload size before sending — triggering a confirmation flow and archiver-based ZIP compression when limits are exceeded. Socket.io streams every event in real time.</div>
       </div>
     </div>
 
@@ -335,8 +335,8 @@ footer{border-top:0.5px solid var(--rule);padding:3rem 2rem;text-align:center}
         <div class="flow-line"><div class="flow-dot"></div><div class="flow-connector"></div></div>
         <div class="flow-body">
           <div class="flow-title">Python face service (Flask)</div>
-          <div class="flow-desc">POST /recognize: accepts image URL, runs RetinaFace for detection + FaceNet512 for 512-dim embeddings, returns bounding boxes and vectors. GET /health: Node polls on startup. Cosine similarity matching happens in Node.</div>
-          <div class="flow-tags"><span class="tag">Python + Flask</span><span class="tag">DeepFace</span><span class="tag">FaceNet512</span><span class="tag">RetinaFace</span></div>
+          <div class="flow-desc">POST /recognize: accepts image URL, runs InsightFace (buffalo_l) for detection + 512-dim embeddings with IoU-based deduplication, returns bounding boxes and vectors. GET /health: Node polls on startup. Cosine similarity matching happens in Node.</div>
+          <div class="flow-tags"><span class="tag">Python + Flask</span><span class="tag">InsightFace</span><span class="tag">buffalo_l</span><span class="tag">IoU Deduplication</span></div>
         </div>
       </div>
       <div class="flow-node">
@@ -660,7 +660,7 @@ useEffect(() => {
         <tr><th>Decision</th><th>Choice</th><th>Alternative</th><th>Why</th><th>v1?</th></tr>
       </thead>
       <tbody>
-        <tr><td>Face recognition</td><td><strong>Python (DeepFace)</strong></td><td>face-api.js</td><td>FaceNet512 + RetinaFace accuracy is measurably better. Python is correct for this job. Polyglot framing is stronger on resume.</td><td><span class="v v-y">Yes</span></td></tr>
+        <tr><td>Face recognition</td><td><strong>Python (InsightFace)</strong></td><td>face-api.js, DeepFace</td><td>InsightFace (Buffalo_L) accuracy and speed are superior to DeepFace and JS models under difficult lighting/angles. Keeping ML logic in Python mirrors standard production boundaries.</td><td><span class="v v-y">Yes</span></td></tr>
         <tr><td>Embedding storage</td><td><strong>MongoDB float array</strong></td><td>Qdrant</td><td>≤10,000 faces: cosine similarity in Node is under 20ms. Qdrant adds infrastructure without solving a real problem at this scale.</td><td><span class="v v-y">Yes</span></td></tr>
         <tr><td>Vector DB</td><td><strong>Qdrant (v2)</strong></td><td>MongoDB</td><td>Justified when scale demands it. Adding it to v1 is resume padding — interviewers will ask why and "MongoDB was too slow" won't be true.</td><td><span class="v v-l">v2</span></td></tr>
         <tr><td>Session memory</td><td><strong>Redis</strong></td><td>MongoDB</td><td>Ephemeral, frequently updated, requires fast reads. MongoDB persistence overhead is unnecessary for 24hr TTL session data.</td><td><span class="v v-y">Yes</span></td></tr>
@@ -772,7 +772,7 @@ useEffect(() => {
         </div>
         <div class="sprint-body" id="sb-s3">
           <ul class="tasks">
-            <li class="task">Flask service. Install deepface, flask, opencv-python, gunicorn.</li>
+            <li class="task">Flask service. Install insightface, onnxruntime, flask, opencv-python, gunicorn.</li>
             <li class="task"><code>GET /health</code> — returns service status and model name. Node checks this on startup, refuses face jobs if down.</li>
             <li class="task"><code>POST /recognize</code> — accepts imageUrl, returns faces[{embedding:[512 floats], bbox:{x,y,w,h}}].</li>
             <li class="task">Node calls Python via axios. 3-attempt retry logic. 30s timeout.</li>
