@@ -1,10 +1,12 @@
 # APES — System Architecture
 
-This document describes the high-level design, component boundaries, and core workflows of the APES (Agentic Photos Evaluation and Segregation) AI-powered photo management system.
+This document describes the high-level design, component boundaries, background processing systems, and core workflows of the APES (Agentic Photos Evaluation and Segregation) system.
+
+---
 
 ## 1. System Overview
 
-APES is built as a polyglot microservice architecture designed to handle photo storage, automatic face recognition, natural language retrieval, and action dispatching.
+APES is structured as a polyglot microservice architecture designed to handle photo storage, automatic face recognition, natural language retrieval, and action dispatching.
 
 ```mermaid
 graph TD
@@ -19,20 +21,44 @@ graph TD
 ```
 
 ### Component Boundaries
-- **React Client (Vite):** Visualizer layer. Standard React SPA, styling done via Tailwind. Renders the gallery, overlay canvas for face labeling, real-time toast alerts, and a chat interface. Communicates via Socket.io and Axios.
-- **Express API (Node.js):** The orchestration core. Owns the REST API, websocket channels (via Socket.io), session routing, database schemas (via Mongoose), and the agent loop.
-- **Python Face Service (Flask):** The machine learning processor. Wrapped in a simple Flask wrapper. Accepts image URLs, runs InsightFace (Buffalo_L model) to locate bounding boxes and generate 512-dimensional float embeddings, using an IoU-based deduplication filter to prevent duplicate face records.
-- **Redis (Upstash/Local):** Serves two distinct namespaces:
-  1. *BullMQ Job Queues:* Organises asynchronous tasks for face extraction, email sending, and WhatsApp delivery.
-  2. *Session Store:* Caches chat history and state contexts with a 24-hour TTL.
-- **MongoDB Atlas:** Ephemeral-to-persistent storage. Holds records for users, photos, faces, named people, and delivery/chat audits.
+* **React Client (Vite)**: Standard Single Page Application built on React, styled with Tailwind CSS v4.0. Renders the photo library gallery grid, crop canvas overlay for manual face labeling, real-time toast alerts, and a chat interface. Communicates via Socket.io and Axios.
+* **Express API (Node.js)**: The orchestration core. Handles API routing, database schemas (via Mongoose), Socket.io connections, session caches, and the AI agent loop.
+* **Python Face Service (Flask)**: Wrapper exposing face detection and embedding utilities. Accepts image URLs, downloads the image, extracts faces using the **InsightFace (buffalo_l)** library, applies IoU Non-Maximum Suppression (NMS) deduplication, and returns 512-dim embedding float arrays.
+* **Redis (Upstash / Local)**: Dual namespace cache store:
+  1. *BullMQ Job Queues*: Organizes asynchronous jobs for face ingestion, email/WhatsApp delivery, and temporary asset cleanup.
+  2. *Session Store*: Caches agent conversation history and memory with a 24-hour TTL.
+* **MongoDB Atlas**: Persistent database storing records for users, photos, faces, named personas, chat histories, and delivery audits.
 
 ---
 
-## 2. Core Workflows
+## 2. Background Queue & Worker Architecture
 
-### Workflow A: Photo Upload & Processing Pipeline
-When a user uploads a batch of files, the system processes them asynchronously using BullMQ workers.
+To prevent long-running tasks from blocking the Express event loop, APES uses a Redis-backed **BullMQ** job pipeline:
+
+```
+[Express API]
+      │
+      ├─► Add Job ──► [ recognitionQueue ] ──► [ recognition.worker.js ] ──► Socket.io Events
+      │
+      ├─► Add Job ──► [ deliveryQueue ] ──► [ delivery.worker.js ] ──► SMTP / WA
+      │
+      └─► Schedule ──► [ zipCleanupQueue ] ──► [ cleanupZip.worker.js ] ──► Cloudinary Purge
+```
+
+1. **`recognitionQueue`**:
+   - Spawns a job whenever a photo is uploaded.
+   - The worker calls the Python service, updates the database face embeddings, computes similarities, and pushes real-time telemetry back to the client via Socket.io.
+2. **`deliveryQueue`**:
+   - Handles photo delivery tasks asynchronously.
+   - Invokes SMTP Nodemailer or whatsapp-web.js depending on the medium requested, updating the delivery record status on completion or failure.
+3. **`zipCleanupQueue`**:
+   - Runs a repeatable cron job (every 24 hours) to locate expired ZIP archives in `DeliveryHistory`, delete the raw ZIP assets from Cloudinary, and clear the database links.
+
+---
+
+## 3. Core Workflows
+
+### Workflow A: Photo Upload & Ingestion Pipeline
 
 ```mermaid
 sequenceDiagram
@@ -45,18 +71,19 @@ sequenceDiagram
     participant Worker as BullMQ Worker
     participant Python as Flask Face Service
 
-    User->>API: POST /api/photos/upload (Multipart FormData)
+    User->>API: POST /api/v1/photos/upload (Multipart FormData)
     API->>Cloud: Upload image buffer
     Cloud-->>API: Return secure URL & public ID
     API->>DB: Save Photo Document (status: 'processing')
     API->>Queue: Add job to 'recognitionQueue' { photoId, imageUrl }
     API-->>User: Return 202 Accepted (jobId)
     
-    Note over Worker: Background thread picks up job
+    Note over Worker: Background worker picks up job
+    Worker->>API: Emit socket event 'recognition:progress' (0%)
     Worker->>Python: POST /recognize { imageUrl }
     Python->>Python: Fetch image + InsightFace detection & embedding extraction
-    Python->>Python: Apply IoU deduplication (NMS threshold 0.70)
     Python-->>Worker: Return array of faces [ { bbox, embedding } ]
+    Worker->>API: Emit socket event 'recognition:progress' (50%)
     
     loop Match Embeddings
         Worker->>DB: Load all existing Person centroids for user
@@ -66,18 +93,16 @@ sequenceDiagram
         else No Match
             Worker->>DB: Save Face { personId: null, userId, embedding, bbox, isLabeled: false }
             Worker->>API: Emit socket event 'face:new'
-            API-->>User: Toast: Unknown face detected
         end
     end
     Worker->>DB: Update Photo status to 'completed', increment faceCount
-    Worker->>API: Job complete event
-    API-->>User: Emit socket event 'recognition:done'
+    Worker->>API: Emit socket event 'recognition:progress' (100%)
+    Worker->>API: Emit socket event 'recognition:done'
 ```
 
 ---
 
-### Workflow B: Agent Query & Action Flow
-This workflow describes how a natural language request is routed, processed in a loop, and translated into backend actions.
+### Workflow B: Agent Query & Tool Calling Loop
 
 ```mermaid
 sequenceDiagram
@@ -89,23 +114,70 @@ sequenceDiagram
     participant Tools as Tool Handlers
     participant DB as MongoDB
 
-    User->>API: POST /api/chat/message { message, sessionId }
-    API->>Redis: Get session (messages history & search memory)
-    API->>API: Determine routing (simple -> 8b, complex -> 70b)
-    API->>Groq: Request completion (messages + tools definition)
+    User->>API: POST /api/chat { message }
+    API->>Redis: Get session (messages history & memory)
+    API->>API: Select model (simple -> 8b, complex -> 70b)
+    API->>Groq: Request completion (last 10 messages + tools definition)
     
     loop Agent Loop (Max 5 iterations)
         Groq-->>API: Finish Reason: 'tool_calls'
         API->>Tools: Parse arguments & execute tool (e.g. searchPhotos)
         Tools->>DB: Query Database
-        Tools-->>API: Return stringified payload (e.g. [photoIds])
+        Tools-->>API: Return result payload
         API->>Redis: Update session.memory.lastPhotoSearch
         API->>API: Append tool result message to history
         API->>Groq: Request completion again
     end
     
     Groq-->>API: Finish Reason: 'stop' (Final response text)
-    API->>DB: Save ChatHistory
+    API->>DB: Save ChatHistory (summary, userMessage, assistantReply)
     API->>Redis: Update session messages (TTL 24h)
-    API-->>User: Stream response text & Socket.io event (if media results)
+    API-->>User: Return response JSON (reply, cards)
+```
+
+---
+
+### Workflow C: Smart ZIP Delivery Confirmation Flow
+
+This workflow illustrates how the system manages oversized deliveries (exceeding Gmail's 25MB or WhatsApp's 100MB limits).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as React Client
+    participant API as Express API
+    participant Redis as Redis Session
+    participant Queue as Redis (BullMQ)
+    participant Worker as BullMQ Worker
+    participant Cloud as Cloudinary
+
+    User->>API: POST /api/chat {"message": "email these to mom@example.com"}
+    Note over API: Agent resolves photo IDs from last search memory
+    API->>API: Sum bytes field of selected photos
+    Note over API: Sum exceeds 25MB medium threshold
+    API->>Redis: Save pendingZipConfirmation in session
+    API->>API: Emit socket event 'delivery:zip-confirm'
+    API-->>User: Return "Awaiting confirmation..."
+    Note over User: Client displays ZipConfirmModal overlay
+    
+    alt User Declines ZIP
+        User->>API: POST /api/chat {"message": "cancel"} (or confirmZipDelivery tool called with confirmed: false)
+        API->>Redis: Delete pendingZipConfirmation
+        API-->>User: Return "Delivery request cancelled."
+    else User Confirms ZIP
+        User->>API: POST /api/chat {"message": "yes, send as ZIP"} (or confirmZipDelivery tool called with confirmed: true)
+        API->>Redis: Retrieve & delete pendingZipConfirmation
+        API->>DB: Save DeliveryHistory (status: 'queued', format: 'zip')
+        API->>API: Compile ZIP streaming archive using 'archiver'
+        API->>Cloud: Upload ZIP raw stream
+        Cloud-->>API: Return raw ZIP URL
+        API->>DB: Update DeliveryHistory (status: 'queued', zipUrl)
+        API->>Queue: Add job to 'deliveryQueue' { requestId }
+        API-->>User: Return "ZIP delivery queued successfully."
+        Note over Worker: Background delivery worker processes job
+        Worker->>API: Emit socket event 'delivery:started'
+        Worker->>Worker: Dispatch Nodemailer Email containing ZIP URL
+        Worker->>DB: Update DeliveryHistory (status: 'delivered', deliveredAt)
+        Worker->>API: Emit socket event 'delivery:done'
+    end
 ```

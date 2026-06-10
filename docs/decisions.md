@@ -17,10 +17,13 @@ This document lists the architectural decisions made for APES (Agentic Photos Ev
 | **Photo Assets Host** | **Cloudinary CDN** | AWS S3, Local storage | Cloudinary provides auto-image compression, simple URL transformations, and a robust free tier without IAM configuration overhead. |
 | **Deployment Target** | **Managed Services (Railway / Vercel)** | Docker Compose on single VPS | Railway + Vercel deployment handles multi-service orchestration with zero operational overhead, allowing focus on core logic. |
 | **Client UI Animations** | **Tailwind standard** | Framer Motion | Animations do not validate core agent or backend engineering capability. Priority is focused on queue execution and tool routing correctness. |
+| **ZIP Compression** | **archiver + Cloudinary temp** | Server disk, base64 | No disk storage on server. Cloudinary temp raw asset with 24hr auto-delete. Streaming compression — no full buffer in memory during creation. |
+| **ZIP Trigger** | **Socket.io confirmation** | Auto-send, HTTP polling | User must be informed and consent before unexpected format change. Socket.io is already in the stack. HTTP polling is wasteful for a one-time event. |
+| **Size Check Method** | **Cloudinary bytes metadata** | Download and measure | Cloudinary stores the byte size of every asset. Reading it costs one DB query, not a download. Size check is essentially free. |
 
 ---
 
 ## Technical Trade-offs Acknowledged
 
 ### Polyglot Microservice Overhead
-Managing two languages (Node.js and Python) adds operational complexity. This trade-off is accepted because DeepFace's accuracy gains over JS equivalents are critical to usability. The service boundaries are kept clean: Node.js communicates with Python solely through an internal port-to-port HTTP API.
+Managing two languages (Node.js and Python) adds operational complexity. This trade-off is accepted because InsightFace's accuracy gains over JS equivalents are critical to usability. The service boundaries are kept clean: Node.js communicates with Python solely through an internal port-to-port HTTP API.

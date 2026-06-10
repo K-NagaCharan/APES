@@ -12,7 +12,7 @@ Tracks registered users and authentication credentials.
 const UserSchema = new mongoose.Schema({
   username: { type: String, required: true, trim: true },
   email: { type: String, required: true, unique: true, trim: true, lowercase: true },
-  password: { type: String, required: true }, // Hashed using bcrypt
+  passwordHash: { type: String, required: true }, // Hashed using bcrypt
   createdAt: { type: Date, default: Date.now }
 });
 ```
@@ -27,8 +27,15 @@ const PhotoSchema = new mongoose.Schema({
   width: { type: Number },
   height: { type: Number },
   status: { type: String, enum: ['processing', 'completed', 'failed'], default: 'processing' },
+  bytes: { type: Number },                             // Cloudinary file size in bytes
+  originalName: { type: String },                      // Original filename
   faceCount: { type: Number, default: 0 },
   uploadDate: { type: Date, default: Date.now }
+});
+
+// Virtual getter for standardizing on Photo.imageUrl
+PhotoSchema.virtual("imageUrl").get(function () {
+  return this.url;
 });
 ```
 
@@ -72,13 +79,10 @@ Provides persistent storage of chat context.
 const ChatHistorySchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   sessionId: { type: String, required: true },
-  messages: [{
-    role: { type: String, enum: ['user', 'assistant', 'tool'], required: true },
-    content: { type: String },
-    tool_calls: { type: Array },
-    tool_call_id: { type: String }
-  }],
-  timestamp: { type: Date, default: Date.now }
+  summary: { type: String, default: "" },             // Brief summary of session topic
+  userMessage: { type: String, required: true },       // Raw user query input
+  assistantReply: { type: String, required: true },    // Assistant text reply returned
+  createdAt: { type: Date, default: Date.now }
 });
 ```
 
@@ -90,6 +94,13 @@ const DeliveryHistorySchema = new mongoose.Schema({
   recipient: { type: String, required: true },
   medium: { type: String, enum: ['email', 'whatsapp'], required: true },
   photoIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Photo' }],
+  count: { type: Number },                             // Count of photos delivered
+  format: { type: String, enum: ['links', 'zip'] },    // Delivery format (links or compressed ZIP)
+  zipUrl: { type: String },                            // Cloudinary URL for the ZIP file
+  cloudinaryPublicId: { type: String },                // Public ID of raw ZIP resource
+  messageId: { type: String },                         // Message ID from Nodemailer/WhatsApp
+  deliveredAt: { type: Date },                         // Timestamp when delivered successfully
+  zipDeletedAt: { type: Date },                        // Timestamp when Cloudinary ZIP was cleaned up
   status: { type: String, enum: ['queued', 'delivered', 'failed'], default: 'queued' },
   error: { type: String, default: null },
   createdAt: { type: Date, default: Date.now }

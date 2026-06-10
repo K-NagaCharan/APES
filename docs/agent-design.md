@@ -1,15 +1,15 @@
 # Agent Loop and Tool Calling Design
 
-This document details the Groq agent configuration, tool definitions, session state structures, state injection strategies, and robust failure handling.
+This document details the Groq AI agent configuration, tool definitions, session state structures, state injection strategies, and failure-handling strategies.
 
 ---
 
 ## 1. Groq Tool Definitions
 
-The Groq agent is provided with five functional tools. These schemas are parsed by Groq to validate parameters before dispatching tool calls to the Express application.
+The Groq agent is configured with 7 functional tools. These schemas are parsed by Groq to validate parameters before dispatching tool calls to the Express application.
 
 ### Tool: `searchPhotos`
-Finds photos for specific people, dates, location, or event name.
+Finds photos for specific people, dates, locations, or event names.
 ```json
 {
   "name": "searchPhotos",
@@ -59,60 +59,68 @@ Retrieves all known labeled persons in the user's database.
 ```
 
 ### Tool: `sendEmail`
-Sends a set of photos to a specific recipient via email.
+Sends photos to a recipient via email.
 ```json
 {
   "name": "sendEmail",
-  "description": "Send photos via email.",
+  "description": "Send photos via email. If the user refers to 'these photos', 'them', or the most recent search results, photoIds may be omitted and the backend will automatically resolve them using the user's latest photo search.",
   "parameters": {
     "type": "object",
     "properties": {
       "photoIds": {
         "type": "array",
         "items": { "type": "string" },
-        "minItems": 1,
-        "description": "Array of MongoDB photo IDs to email."
+        "description": "Array of MongoDB photo IDs to email. Omit this parameter if the user refers to previously searched/found photos (e.g. 'these', 'them', 'the photos')."
       },
       "email": {
         "type": "string",
         "format": "email",
         "description": "The recipient's email address."
+      },
+      "format": {
+        "type": "string",
+        "enum": ["links", "zip"],
+        "description": "Specify the delivery format. Choose 'zip' if the user explicitly requested a ZIP file or compressed archive. Choose 'links' for standard individual links."
       }
     },
-    "required": ["photoIds", "email"],
+    "required": ["email"],
     "additionalProperties": false
   }
 }
 ```
 
 ### Tool: `sendWhatsApp`
-Sends a WhatsApp message containing links to the requested photos.
+Sends a WhatsApp message containing links or a ZIP to the photos.
 ```json
 {
   "name": "sendWhatsApp",
-  "description": "Send photos through WhatsApp.",
+  "description": "Send photos through WhatsApp. If the user refers to 'these photos', 'them', or the most recent search results, photoIds may be omitted and the backend will automatically resolve them using the user's latest photo search.",
   "parameters": {
     "type": "object",
     "properties": {
       "photoIds": {
         "type": "array",
         "items": { "type": "string" },
-        "minItems": 1,
-        "description": "Array of MongoDB photo IDs to send."
+        "description": "Array of MongoDB photo IDs to send. Omit this parameter if the user refers to previously searched/found photos (e.g. 'these', 'them', 'the photos')."
       },
       "phoneNumber": {
         "type": "string",
         "description": "The recipient's WhatsApp phone number in international format."
+      },
+      "format": {
+        "type": "string",
+        "enum": ["links", "zip"],
+        "description": "Specify the delivery format. Choose 'zip' if the user explicitly requested a ZIP file or compressed archive. Choose 'links' for standard individual links."
       }
     },
-    "required": ["photoIds", "phoneNumber"],
+    "required": ["phoneNumber"],
     "additionalProperties": false
   }
 }
 ```
 
 ### Tool: `requestZipConfirmation`
-Requests user approval to send a compressed ZIP when the delivery size exceeds platform limits.
+Requests user approval to send a compressed ZIP when direct delivery exceeds platform limits.
 ```json
 {
   "name": "requestZipConfirmation",
@@ -136,19 +144,62 @@ Requests user approval to send a compressed ZIP when the delivery size exceeds p
 }
 ```
 
+### Tool: `confirmZipDelivery`
+Confirms or cancels a pending large photo delivery session using the sessionId.
+```json
+{
+  "name": "confirmZipDelivery",
+  "description": "Confirm or cancel a pending large photo delivery session using the sessionId provided.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "sessionId": {
+        "type": "string",
+        "description": "The UUID session ID for the pending ZIP confirmation."
+      },
+      "confirmed": {
+        "type": "boolean",
+        "description": "True if the user confirms and wants to deliver as a ZIP. False if they reject and want to cancel."
+      }
+    },
+    "required": ["sessionId", "confirmed"],
+    "additionalProperties": false
+  }
+}
+```
+
+### Tool: `getDeliveryHistory`
+Retrieves the user's photo sharing history.
+```json
+{
+  "name": "getDeliveryHistory",
+  "description": "Retrieve the user's photo delivery and sharing history records.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "number",
+        "description": "The maximum number of recent delivery records to retrieve. Defaults to 10."
+      }
+    },
+    "additionalProperties": false
+  }
+}
+```
+
 ---
 
 ## 2. Session Memory Layout
 
-Conversation and operational states are cached per user in Redis with a 24-hour TTL.
+Redis maintains conversation context and state maps in a namespaced key: `session:${userId}` with a 24-hour TTL:
 
 ```json
 {
   "messages": [
-    { "role": "user", "content": "Show me Dad's photos from last week" },
+    { "role": "user", "content": "Show me Dad's photos" },
     { "role": "assistant", "tool_calls": [ { "id": "call_1", "type": "function", "function": { "name": "searchPhotos", "arguments": "{\"people\":[\"Dad\"]}" } } ] },
-    { "role": "tool", "tool_call_id": "call_1", "content": "[{\"id\":\"60c72...\",\"url\":\"...\"}]" },
-    { "role": "assistant", "content": "I found 2 photos of Dad." }
+    { "role": "tool", "tool_call_id": "call_1", "content": "[{\"id\":\"6a29086f...\",\"date\":\"2023-11-12\",\"people\":[\"Dad\"]}]" },
+    { "role": "assistant", "content": "I found 1 photo of Dad." }
   ],
   "memory": {
     "lastPhotoSearch": {
@@ -157,123 +208,57 @@ Conversation and operational states are cached per user in Redis with a 24-hour 
       "toDate": null,
       "location": null,
       "event": null,
-      "resultIds": ["60c72b2f9b1d8b2bad689a22", "60c72b2f9b1d8b2bad689a23"]
+      "query": "people: [Dad]",
+      "photoIds": ["6a29086f..."],
+      "resultIds": ["6a29086f..."],
+      "timestamp": "2026-06-10T15:20:00.000Z"
     },
     "lastDelivery": {
       "method": "email",
-      "photoIds": ["60c72b2f9b1d8b2bad689a22", "60c72b2f9b1d8b2bad689a23"],
+      "photoIds": ["6a29086f..."],
       "destination": "mom@example.com",
-      "timestamp": "2026-06-10T06:50:00.000Z"
+      "timestamp": "2026-06-10T15:20:05.000Z"
     },
-    "pendingZipConfirmation": {
-      "deliveryMethod": "email",
-      "estimatedSizeMB": 32.5,
-      "pending": true
-    }
+    "pendingZipConfirmation": null
   }
+}
+```
+
+When a payload exceeds limits, `pendingZipConfirmation` is initialized temporarily in the session context:
+```json
+"pendingZipConfirmation": {
+  "deliveryMethod": "email",
+  "estimatedSizeMB": 32.5,
+  "pending": true
 }
 ```
 
 ---
 
-## 3. Agent Loop Logic (Pseudocode)
+## 3. Orchestration & Bounded Loop Logic
 
-```javascript
-async function runAgent({ userId, message }) {
-  // 1. Load session from Redis (default defaultSession initialized if missing)
-  const session = await getSession(userId);
+The agent loop executes inside [agentLoop.js](file:///d:/APES/backend/src/agent/agentLoop.js) using the following pipeline:
 
-  // 2. Append the user message to memory
-  session.messages.push({ role: "user", content: message });
-
-  // 3. Select model using deterministic heuristic (8b for simple query, 70b for actions)
-  const model = selectModel(message);
-
-  let depth = 0;
-  const executedToolCalls = [];
-  let finalReply = "";
-
-  const systemPrompt = {
-    role: "system",
-    content: "CRITICAL RULES:\n1. Only call tools when the user's request explicitly requires it...\nToday's date is YYYY-MM-DD"
-  };
-
-  // 4. Orchestration loop
-  while (depth < MAX_TOOL_DEPTH) {
-    depth++;
-    const groqMessages = [systemPrompt, ...session.messages];
-
-    const response = await groq.chat.completions.create({
-      model,
-      messages: groqMessages,
-      tools: TOOLS,
-      tool_choice: "auto"
-    });
-
-    const responseMessage = response.choices[0].message;
-
-    if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
-      session.messages.push({
-        role: "assistant",
-        content: responseMessage.content || null,
-        tool_calls: responseMessage.tool_calls
-      });
-
-      for (const toolCall of responseMessage.tool_calls) {
-        const name = toolCall.function.name;
-        const args = JSON.parse(toolCall.function.arguments);
-
-        // Execute tool handler and update agent short-term memory key in Redis
-        const result = await executeTool(name, args, userId);
-        await updateAgentMemory({ userId, toolName: name, toolArgs: args, toolResult: result });
-
-        session.messages.push({
-          role: "tool",
-          tool_call_id: toolCall.id,
-          name,
-          content: JSON.stringify(result)
-        });
-      }
-    } else {
-      finalReply = responseMessage.content || "";
-      session.messages.push({ role: "assistant", content: finalReply });
-      break;
-    }
-  }
-
-  // 5. Trim history and save updated session back to Redis
-  const latestSession = await getSession(userId);
-  latestSession.messages = session.messages;
-  if (latestSession.messages.length > MAX_MESSAGES) {
-    latestSession.messages = latestSession.messages.slice(-MAX_MESSAGES);
-  }
-  await saveSession(userId, latestSession);
-
-  // 6. Save chat log to database
-  await saveChatHistory({ userId, userMessage: message, assistantReply: finalReply });
-
-  return { reply: finalReply, model, toolCalls: executedToolCalls };
-}
-```
+1. **Session Load**: Reads session from Redis (default defaults initialized if missing).
+2. **Context Compacting**: To preserve the LLM context window and prevent token bloating, only the last `10` messages are prepended to the system prompt and sent to Groq.
+3. **Dynamic Tool Filtering**: Tools are filtered before each LLM call based on the user's message keywords (e.g. only appending `getDeliveryHistory` when "history" is requested) to optimize prompt size.
+4. **Deterministic Heuristics Routing**: Heuristics route queries:
+   - Simple conversation maps to `llama-3.1-8b-instant`.
+   - Complex queries matching keywords (`send`, `email`, `whatsapp`, `deliver`, etc.) route to `llama-3.3-70b-versatile` for tool-calling precision.
+5. **Orchestration Loop**: Runs up to a strict ceiling of `MAX_TOOL_DEPTH = 5` iterations.
+6. **Reference Resolution**: If delivery tools are called without `photoIds`, the backend automatically resolves them using `session.memory.lastPhotoSearch.photoIds`.
+7. **Pruning & Writing**: Slices message history to `MAX_MESSAGES = 20` and saves back to Redis. Persists the user message, final reply, and a brief session topic summary into MongoDB `chathistories`.
 
 ---
 
-## 4. Failure Handling Strategies
+## 4. Failure Handling & Resilience Strategies
 
-### A. Tool Parameter Validation
-- **Type Coercion:** If the model sends a string instead of an array, the tool execution layer automatically coerces it to an array before querying.
-- **Email/Phone Format Checks:** The email tool parses the recipient address with a standard regex; the WhatsApp tool strips any symbol formatting (e.g. `+` or `-`).
-- **Validation Failures:** If validation fails, the tool does not throw an API exception. It returns a descriptive string back to the LLM (e.g., `{"error": "Invalid email address format. Ask the user for clarification."}`).
+### A. Fallback Model Routing
+If Groq returns a `429 RateLimitError` on the requested model, the agent catches the exception, registers the model as rate-limited, and automatically retries the request using the alternative model (e.g., swapping `70b` with `8b`).
 
-### B. Tool Execution Failures
-- **Graceful Catch-Alls:** All tool call executions are wrapped in individual `try/catch` statements.
-- **Masking Stack Traces:** If a tool query or external call throws an error, the backend catches the error, logs the trace locally, and passes a descriptive error to the LLM. This prevents exposure of sensitive connection traces.
-- **LLM Context Recovery:** Since the tool results contain error messages, the LLM is given the context to explain the issue to the user and request actions gracefully.
+### B. Manual Failed-Generation Parsing
+If Groq returns a `400 tool_use_failed` parsing exception (commonly caused by minor API gateway parsing anomalies in function-calling responses), the code intercepts the error, parses the `failed_generation` string manually using raw regex/JSON index boundaries to extract the tool name and arguments, and safely recovers the tool execution loop.
 
-### C. Agent Loop Safety Limits
-- **Runaway Prevention:** The loop is strictly limited to `MAX_TOOL_DEPTH` (default `5`) steps. If it hits this ceiling, the system breaks out, returns the client the best available output, and logs an alarm.
-- **History Pruning:** The memory size is capped at `MAX_MESSAGES` (default `30`) messages. Pruning slices off the oldest messages while keeping system context intact.
-- **Python Microservice Failures:** The node server checks the Python service's health via `/health` on API start. If it's down, background uploads refuse to queue job workers, updating photo statuses to `failed: service_unavailable` and warning the user.
-
-### D. Session Corruption Recovery
-- **Safe Session Deserialization:** Reading from Redis uses `try/catch`. If `JSON.parse()` fails (corrupt session), a warning is logged, the existing key is cleared, and a clean session dictionary is initialized. The user's application does not crash.
+### C. Parameter Coercion and Validation
+- All inputs are coerced before execution (e.g. converting a string parameter for `people` to an array).
+- Validation failures do not throw HTTP exceptions. If parameters fail validation, a JSON string containing the validation error is returned to the LLM as the tool execution result, allowing the LLM to gracefully explain the issue and request clarification.
