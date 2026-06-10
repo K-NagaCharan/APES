@@ -37,6 +37,8 @@ export const env = {
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "7d",
   NODE_ENV: process.env.NODE_ENV || "development",
   CLIENT_URL: process.env.CLIENT_URL || "http://localhost:5173",
+  BACKEND_URL: process.env.BACKEND_URL || "http://localhost:5000",
+
   WHATSAPP_SESSION_PATH: process.env.WHATSAPP_SESSION_PATH || "./whatsapp-session",
   MAX_TOOL_DEPTH: parseInt(process.env.MAX_TOOL_DEPTH || "5", 10),
   MAX_HISTORY: parseInt(process.env.MAX_HISTORY || "20", 10),

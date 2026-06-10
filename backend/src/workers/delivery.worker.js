@@ -5,6 +5,8 @@ import { emitDeliveryDone, emitDeliveryFailed, emitDeliveryStarted } from "../so
 import DeliveryHistory from "../models/DeliveryHistory.js";
 import { sendEmail } from "../services/email.service.js";
 import { sendWhatsApp } from "../services/whatsapp.service.js";
+import { env } from "../config/env.js";
+
 
 const WORKER_NAME = process.env.DELIVERY_QUEUE_NAME || "deliveryQueue";
 
@@ -26,15 +28,17 @@ export const deliverPhotos = async (data) => {
       recipient,
       subject: format === "zip" ? "Your Shared Photos ZIP from APES" : "Your Shared Photos from APES",
       photos: photoIds,
-      zipUrl
+      zipUrl: format === "zip" ? zipUrl : null
     });
   } else if (medium === "whatsapp") {
     result = await deliveryHelpers.sendWhatsApp({
       recipient,
       photos: photoIds,
-      zipUrl
+      zipUrl: format === "zip" ? zipUrl : null
     });
   } else {
+
+
     throw new Error(`Unsupported medium: ${medium}`);
   }
 

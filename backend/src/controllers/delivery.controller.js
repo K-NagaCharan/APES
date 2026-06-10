@@ -1,6 +1,10 @@
 import DeliveryHistory from "../models/DeliveryHistory.js";
 import { successResponse, errorResponse } from "../utils/apiResponse.js";
 import { logger } from "../config/logger.js";
+import mongoose from "mongoose";
+import axios from "axios";
+import { env } from "../config/env.js";
+
 
 /**
  * Handles GET /api/v1/delivery/history
@@ -61,6 +65,7 @@ export async function getDeliveryHistoryHandler(req, res) {
       zipUrl: r.zipUrl || null
     }));
 
+
     return successResponse(
       res,
       {
@@ -79,3 +84,58 @@ export async function getDeliveryHistoryHandler(req, res) {
     return errorResponse(res, 500, "Failed to retrieve delivery history.");
   }
 }
+
+/**
+ * Handles GET /api/v1/delivery/download/:deliveryId
+ * Streams the extensionless ZIP file from Cloudinary and returns it with a correct .zip extension.
+ */
+export async function downloadZipHandler(req, res) {
+  const { deliveryId } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(deliveryId)) {
+    return res.status(400).send("Invalid delivery ID format.");
+  }
+
+  try {
+    const deliveryRecord = await DeliveryHistory.findById(deliveryId);
+    if (!deliveryRecord) {
+      return res.status(404).send("Delivery history record not found.");
+    }
+
+    if (deliveryRecord.format !== "zip" || !deliveryRecord.zipUrl) {
+      return res.status(400).send("This delivery is not in ZIP format or the ZIP URL is missing.");
+    }
+
+    if (deliveryRecord.zipDeletedAt) {
+      return res.status(410).send("This ZIP archive has expired and is no longer available.");
+    }
+
+    logger.info({ deliveryId, zipUrl: deliveryRecord.zipUrl }, "Proxying ZIP download from Cloudinary");
+
+    // Fetch the raw stream from Cloudinary
+    const response = await axios({
+      method: "get",
+      url: deliveryRecord.zipUrl,
+      responseType: "stream"
+    });
+
+    // Set response headers to force download with proper filename
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="apes_photos_${deliveryId}.zip"`);
+
+    // Stream error handling
+    response.data.on("error", (err) => {
+      logger.error({ err: err.message, deliveryId }, "Error streaming ZIP file from Cloudinary");
+      if (!res.headersSent) {
+        res.status(500).send("Error downloading file.");
+      }
+    });
+
+    // Pipe the stream to the response
+    response.data.pipe(res);
+  } catch (error) {
+    logger.error({ error: error.message, deliveryId }, "Failed to download ZIP file");
+    return res.status(500).send("Failed to download ZIP file.");
+  }
+}
+

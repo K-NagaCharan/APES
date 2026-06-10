@@ -78,8 +78,10 @@ Rules:
 2. For search queries, call 'searchPhotos'. Do NOT call delivery/zip tools unless explicitly asked to send/share.
 3. If asked to email or WhatsApp photos, call the corresponding tool.
 4. Resolve relative dates to absolute ISO dates.
-5. Match names in queries (like 'Jan') to labeled people.`
+5. Match names in queries (like 'Jan') to labeled people.
+6. If the user explicitly asks to compress the photos, send a ZIP, or send as a ZIP archive, pass the format parameter as 'zip' when calling sendEmail or sendWhatsApp.`
   };
+
 
   // 4. Run orchestration loop
   while (depth < MAX_TOOL_DEPTH) {

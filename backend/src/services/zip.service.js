@@ -189,6 +189,7 @@ export async function createZip({ photos, concurrencyLimit = 3 }) {
   const fileUuid = uuidv4();
   const zipFilename = `delivery-${fileUuid}`;
 
+
   logger.info(
     { filename: zipFilename, sizeBytes: zipBuffer.length },
     "Uploading compiled ZIP archive to Cloudinary..."
@@ -220,13 +221,19 @@ export async function createZip({ photos, concurrencyLimit = 3 }) {
     uploadStream.end(zipBuffer);
   });
 
+  const downloadUrl = uploadResult.secure_url.replace(
+    "/raw/upload/",
+    "/raw/upload/fl_attachment:shared_photos%252Ezip/"
+  );
+
   return {
-    zipUrl: uploadResult.secure_url,
+    zipUrl: downloadUrl,
     cloudinaryPublicId: uploadResult.public_id,
     fileSize: uploadResult.bytes,
     photoCount: photos.length
   };
 }
+
 
 export const zipHelpers = {
   createZip

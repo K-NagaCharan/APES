@@ -70,6 +70,11 @@ export const TOOLS = [
             type: "string",
             format: "email",
             description: "The recipient's email address."
+          },
+          format: {
+            type: "string",
+            enum: ["links", "zip"],
+            description: "Specify the delivery format. Choose 'zip' if the user explicitly requested a ZIP file or compressed archive. Choose 'links' for standard individual links."
           }
         },
         required: ["email"],
@@ -95,6 +100,11 @@ export const TOOLS = [
           phoneNumber: {
             type: "string",
             description: "The recipient's WhatsApp phone number in international format."
+          },
+          format: {
+            type: "string",
+            enum: ["links", "zip"],
+            description: "Specify the delivery format. Choose 'zip' if the user explicitly requested a ZIP file or compressed archive. Choose 'links' for standard individual links."
           }
         },
         required: ["phoneNumber"],
@@ -102,6 +112,7 @@ export const TOOLS = [
       }
     }
   },
+
   {
     type: "function",
     function: {
