@@ -5,7 +5,7 @@ import numpy as np
 
 # Initialize FaceAnalysis (Buffalo_L) once
 app = FaceAnalysis(name="buffalo_l")
-app.prepare(ctx_id=-1, det_size=(640, 640))
+app.prepare(ctx_id=-1, det_size=(Config.DETECTION_SIZE, Config.DETECTION_SIZE))
 
 def compute_iou(box1, box2):
     """
@@ -91,6 +91,13 @@ def extract_embeddings(img):
             y = y_min
             w = max(0, x_max - x_min)
             h = max(0, y_max - y_min)
+            
+            # Filter out low detection scores and tiny faces
+            det_score = getattr(face, "det_score", 0.0)
+            if det_score < Config.MIN_DETECTION_SCORE:
+                continue
+            if w < Config.MIN_FACE_SIZE or h < Config.MIN_FACE_SIZE:
+                continue
             
             # Convert embedding numpy array to a list
             embedding = face.embedding.tolist()

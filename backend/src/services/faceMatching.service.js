@@ -171,14 +171,18 @@ export async function findBestFaceMatch(embedding, userId = null) {
 
   let bestMatch = null;
   let bestScore = -1.0;
+  let secondBestScore = -1.0;
 
   // 3. Perform compare loop
   for (const person of people) {
     try {
       const similarity = cosineSimilarity(embedding, person.centroid);
       if (similarity > bestScore) {
+        secondBestScore = bestScore;
         bestScore = similarity;
         bestMatch = person;
+      } else if (similarity > secondBestScore) {
+        secondBestScore = similarity;
       }
     } catch (err) {
       logger.warn(
@@ -188,14 +192,19 @@ export async function findBestFaceMatch(embedding, userId = null) {
     }
   }
 
-  // Compare against PROPAGATION THRESHOLD for auto-labeling
-  const isMatch = bestScore >= env.FACE_PROPAGATION_THRESHOLD;
+  // Compare against PROPAGATION THRESHOLD and margin for auto-labeling
+  const margin = env.FACE_MATCH_MARGIN !== undefined ? env.FACE_MATCH_MARGIN : 0.05;
+  const satisfiesMargin = (bestScore - secondBestScore) >= margin;
+  const isMatch = bestScore >= env.FACE_PROPAGATION_THRESHOLD && satisfiesMargin;
   const finalDurationMs = Date.now() - startTime;
 
   logger.info(
     {
       compared: people.length,
       bestScore: parseFloat(bestScore.toFixed(4)),
+      secondBestScore: parseFloat(secondBestScore.toFixed(4)),
+      margin,
+      satisfiesMargin,
       matched: isMatch,
       durationMs: finalDurationMs
     },

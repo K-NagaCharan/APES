@@ -4,6 +4,7 @@ import { processRecognizedFaces } from "../src/services/facePersistence.service.
 import Person from "../src/models/Person.js";
 import Face from "../src/models/Face.js";
 import Photo from "../src/models/Photo.js";
+import { updatePersonCentroid } from "../src/services/faceMatching.service.js";
 
 const makeVector = (size, val = 0.0) => Array(size).fill(val);
 
@@ -51,7 +52,8 @@ async function main() {
     // Seed mock Person ("Test Dad")
     const personDad = new Person({
       userId: testUserId,
-      name: "Test Dad"
+      name: "Test Dad",
+      nameNormalized: "test dad"
     });
     await personDad.save();
 
@@ -65,9 +67,14 @@ async function main() {
       personId: personDad._id,
       userId: testUserId,
       embedding: dadEmbedding,
-      bbox: { x: 10, y: 10, w: 50, h: 50 }
+      bbox: { x: 10, y: 10, w: 50, h: 50 },
+      isLabeled: true,
+      labelSource: "manual"
     });
     await faceDad.save();
+
+    // Recalculate centroid for personDad
+    await updatePersonCentroid(personDad._id);
 
     // --- TEST 1: Empty Faces Array ---
     console.log("\n[TEST 1] Testing processRecognizedFaces() with empty faces array...");
@@ -151,7 +158,7 @@ async function main() {
     console.log("\n[TEST 4 & 5] Testing mixed faces (3 known, 2 unknown) and data quality constraints...");
     
     // Seed 2 more mock people
-    const personMom = new Person({ userId: testUserId, name: "Test Mom" });
+    const personMom = new Person({ userId: testUserId, name: "Test Mom", nameNormalized: "test mom" });
     await personMom.save();
     const momEmbedding = makeVector(512, 0.01);
     momEmbedding[1] = 0.5;
@@ -160,11 +167,14 @@ async function main() {
       personId: personMom._id,
       userId: testUserId,
       embedding: momEmbedding,
-      bbox: { x: 5, y: 5, w: 30, h: 30 }
+      bbox: { x: 5, y: 5, w: 30, h: 30 },
+      isLabeled: true,
+      labelSource: "manual"
     });
     await faceMom.save();
+    await updatePersonCentroid(personMom._id);
 
-    const personSister = new Person({ userId: testUserId, name: "Test Sister" });
+    const personSister = new Person({ userId: testUserId, name: "Test Sister", nameNormalized: "test sister" });
     await personSister.save();
     const sisterEmbedding = makeVector(512, 0.01);
     sisterEmbedding[2] = 0.5;
@@ -173,9 +183,12 @@ async function main() {
       personId: personSister._id,
       userId: testUserId,
       embedding: sisterEmbedding,
-      bbox: { x: 8, y: 8, w: 35, h: 35 }
+      bbox: { x: 8, y: 8, w: 35, h: 35 },
+      isLabeled: true,
+      labelSource: "manual"
     });
     await faceSister.save();
+    await updatePersonCentroid(personSister._id);
 
     // Query elements
     const qDad = [...dadEmbedding]; qDad[0] = 0.502;
