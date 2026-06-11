@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { SOCKET_EVENTS } from "../../../shared/socketEvents.js";
-import { incrementPendingVersion } from "../utils/refreshTracker";
+import { incrementPendingVersion } from "../utils/refreshTracker.js";
 
 /**
  * React hook to register Socket.io event listeners.
